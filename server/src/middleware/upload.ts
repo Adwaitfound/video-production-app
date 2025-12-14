@@ -20,12 +20,20 @@ const storage = multer.diskStorage({
 });
 
 const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  // Allow common file types
-  const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx|mp4|mov|avi|mkv|zip/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  // Define allowed file types with their MIME types
+  const allowedMimes = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+    'application/pdf',
+    'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/x-matroska',
+    'application/zip', 'application/x-zip-compressed'
+  ];
+  
+  const allowedExtensions = /jpeg|jpg|png|gif|pdf|doc|docx|xls|xlsx|mp4|mov|avi|mkv|zip/;
+  const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
 
-  if (extname && mimetype) {
+  if (allowedMimes.includes(file.mimetype) && extname) {
     cb(null, true);
   } else {
     cb(new Error('Invalid file type. Allowed types: images, videos, documents, archives'));
