@@ -83,8 +83,8 @@ async function seedData() {
     );
 
     const project3 = await db.run(
-      `INSERT INTO projects (client_id, title, description, project_type, status, start_date, deadline, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO projects (client_id, title, description, project_type, status, start_date, deadline, budget, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         client1.lastID,
         'Brand Identity Design',
