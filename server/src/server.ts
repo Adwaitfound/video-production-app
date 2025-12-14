@@ -3,6 +3,9 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 
+// Import middleware
+import { apiLimiter } from './middleware/rateLimiter';
+
 // Import routes
 import authRoutes from './routes/auth';
 import clientRoutes from './routes/clients';
@@ -21,6 +24,9 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Apply rate limiting to all API routes
+app.use('/api/', apiLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);

@@ -3,8 +3,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import db from '../utils/database';
 import { authMiddleware } from '../middleware/auth';
+import { authLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
+
+// Apply strict rate limiting to auth endpoints
+router.use(authLimiter);
 
 // Register
 router.post('/register', async (req: Request, res: Response) => {

@@ -4,13 +4,14 @@ import fs from 'fs';
 import db from '../utils/database';
 import { authMiddleware } from '../middleware/auth';
 import { upload } from '../middleware/upload';
+import { uploadLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
 router.use(authMiddleware);
 
-// Upload file
-router.post('/upload', upload.single('file'), async (req: Request, res: Response) => {
+// Upload file - with rate limiting
+router.post('/upload', uploadLimiter, upload.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
