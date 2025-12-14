@@ -1,0 +1,32 @@
+{
+  "name": "video-production-app",
+  "version": "1.0.0",
+  "description": "Full-stack project management and billing application for video production agency",
+  "private": true,
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:client": "cd client && npm install",
+    "install:all": "npm run install:server && npm run install:client",
+    "init-db": "cd server && npm run init-db",
+    "seed": "cd server && npm run seed",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
+    "start:server": "cd server && npm start",
+    "start:client": "cd client && npm run preview"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Adwaitfound/video-production-app"
+  },
+  "keywords": [
+    "video-production",
+    "project-management",
+    "billing",
+    "invoicing",
+    "client-portal"
+  ],
+  "author": "",
+  "license": "MIT"
+}
