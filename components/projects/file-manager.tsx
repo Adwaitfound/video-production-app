@@ -184,24 +184,9 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
                 url: linkUrl,
                 category: linkCategory,
             })
-            // Wrap insert in a timeout to avoid indefinite spinner if network hangs
-            async function insertWithTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-                let timeoutId: any
-                const timeout = new Promise<never>((_, reject) => {
-                    timeoutId = setTimeout(() => reject(new Error('Add link timed out. Check network or RLS policies.')), ms)
-                })
-                try {
-                    const result = await Promise.race([p, timeout]) as T
-                    clearTimeout(timeoutId)
-                    return result
-                } catch (err) {
-                    clearTimeout(timeoutId)
-                    throw err
-                }
-            }
 
             debug.log('FILE_MANAGER', 'Add link inserting...')
-            const insertPromise = supabase
+            const { error } = await supabase
                 .from('project_files')
                 .insert({
                     project_id: projectId,
@@ -213,8 +198,6 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
                     description: linkDescription,
                     uploaded_by: user?.id,
                 })
-            
-            const { error } = await insertWithTimeout(insertPromise, 12000) as any
 
             if (error) throw error
 
