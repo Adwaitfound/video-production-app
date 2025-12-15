@@ -3,8 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
-  // Enable static export for Next.js 16+
-  output: 'export',
+  // Removed static export to allow dynamic SSR on Vercel
   // Suppress hydration warnings from Radix UI dynamic IDs
   logging: {
     fetches: {
