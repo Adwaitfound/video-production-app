@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "setup:db": "./scripts/setup-database.sh",
-    "setup:admin": "./scripts/setup-admin.sh"
+    "setup:admin": "./scripts/setup-admin.sh",
+    "export": "next export"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
