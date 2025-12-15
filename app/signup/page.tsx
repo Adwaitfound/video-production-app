@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -11,7 +11,7 @@ import Link from 'next/link';
 import { Video, Users, Briefcase, Shield } from 'lucide-react';
 import type { UserRole } from '@/types';
 
-export default function SignupPage() {
+function SignupForm() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [fullName, setFullName] = useState('');
@@ -23,14 +23,19 @@ export default function SignupPage() {
     const searchParams = useSearchParams();
     const role = (searchParams.get('role') || 'client') as UserRole;
 
-    const roleConfig = {
+    const roleConfig: Record<UserRole, {
+        title: string;
+        description: string;
+        icon: any;
+        color: string;
+    }> = {
         client: {
             title: 'Client Account',
             description: 'Access your projects and track progress',
             icon: Users,
             color: 'from-blue-500 to-cyan-500',
         },
-        employee: {
+        project_manager: {
             title: 'Employee Account',
             description: 'Manage projects and collaborate with team',
             icon: Briefcase,
@@ -200,7 +205,7 @@ export default function SignupPage() {
                             </>
                         )}
 
-                        {(role === 'admin' || role === 'employee') && (
+                        {(role === 'admin' || role === 'project_manager') && (
                             <div className="space-y-2">
                                 <Label htmlFor="companyName">Company Name (Optional)</Label>
                                 <Input
@@ -244,5 +249,13 @@ export default function SignupPage() {
                 </CardContent>
             </Card>
         </div>
+    );
+}
+
+export default function SignupPage() {
+    return (
+        <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Loading...</div>}>
+            <SignupForm />
+        </Suspense>
     );
 }
