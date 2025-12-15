@@ -112,7 +112,12 @@ export function Sidebar() {
           <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
             <span className="text-primary-foreground font-bold text-lg">VP</span>
           </div>
-          <span className="text-xl font-bold">VideoProduction</span>
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground">Welcome</span>
+            <span className="text-lg font-bold leading-tight line-clamp-2">
+              {user?.company_name || user?.full_name || "Video Production"}
+            </span>
+          </div>
         </Link>
       </div>
       <div className="flex-1">

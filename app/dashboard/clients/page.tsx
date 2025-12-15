@@ -38,6 +38,7 @@ import type { Client, Project, Invoice, ServiceType } from "@/types"
 import { SERVICE_TYPES } from "@/types"
 import { createClientAccount } from "@/app/actions/create-client"
 import { Badge } from "@/components/ui/badge"
+import { debug } from "@/lib/debug"
 
 interface ClientWithDetails extends Client {
   projects?: Project[]
@@ -79,6 +80,7 @@ export default function ClientsPage() {
 
     try {
       console.log('Fetching clients...')
+      debug.log('CLIENTS', 'Fetching clients...')
 
       // Fetch clients
       const { data: clientsData, error: clientsError } = await supabase
@@ -88,10 +90,12 @@ export default function ClientsPage() {
 
       if (clientsError) {
         console.error('Error fetching clients:', clientsError)
+        debug.error('CLIENTS', 'Fetch error', { message: clientsError.message, code: clientsError.code })
         throw clientsError
       }
 
       console.log('Clients fetched:', clientsData?.length)
+      debug.success('CLIENTS', 'Clients fetched', { count: clientsData?.length })
 
       // Fetch projects for each client
       const { data: projectsData, error: projectsError } = await supabase
@@ -152,26 +156,39 @@ export default function ClientsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (submitting) return
+    
     setSubmitting(true)
 
     try {
+      debug.log('CLIENTS', 'Adding client', formData)
+      
       // Call server action to create client account
-      const result = await createClientAccount(formData)
+      let result
+      try {
+        result = await createClientAccount(formData)
+      } catch (callError: any) {
+        debug.error('CLIENTS', 'Server action call failed', { error: callError?.message })
+        throw new Error(`Server action failed: ${callError?.message || String(callError)}`)
+      }
+      
+      debug.log('CLIENTS', 'Add client result', result)
 
       if (!result.success) {
+        debug.error('CLIENTS', 'Failed to add client', result.error)
         throw new Error(result.error)
       }
 
+      debug.success('CLIENTS', 'Client created successfully', { email: result.credentials?.email })
+      
       // Store credentials to show to admin
       setGeneratedCredentials({
         email: result.credentials!.email,
         password: result.credentials!.password
       })
 
-      // Refresh clients list
-      await fetchClients()
-
-      // Reset form
+      // Close dialog and reset form BEFORE fetching data
+      setIsDialogOpen(false)
       setFormData({
         company_name: "",
         contact_person: "",
@@ -180,12 +197,17 @@ export default function ClientsPage() {
         address: "",
       })
 
-      // Close dialog and show credentials
-      setIsDialogOpen(false)
+      // Then refresh clients list
+      debug.log('CLIENTS', 'Refreshing client list')
+      await fetchClients()
+
+      // Show credentials after
+      debug.log('CLIENTS', 'Showing credentials modal')
       setShowCredentials(true)
     } catch (error: any) {
       console.error('Error adding client:', error)
-      alert(error.message || 'Failed to add client')
+      debug.error('CLIENTS', 'Submit error', { error: error?.message, details: String(error) })
+      alert(error?.message || error?.toString() || 'Failed to add client')
     } finally {
       setSubmitting(false)
     }
@@ -415,7 +437,7 @@ export default function ClientsPage() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Revenue</p>
-                      <p className="font-medium">${(client.invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) || 0).toLocaleString()}</p>
+                      <p className="font-medium">₹{(client.invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) || 0).toLocaleString()}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -480,7 +502,7 @@ export default function ClientsPage() {
                       </TableCell>
                       <TableCell className="hidden lg:table-cell">{client.email}</TableCell>
                       <TableCell>{client.projects?.length || 0}</TableCell>
-                      <TableCell>${(client.invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) || 0).toLocaleString()}</TableCell>
+                      <TableCell>₹{(client.invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) || 0).toLocaleString()}</TableCell>
                       <TableCell>
                         <StatusBadge status={client.status} />
                       </TableCell>
@@ -557,7 +579,7 @@ export default function ClientsPage() {
                       <div>
                         <p className="text-sm text-muted-foreground">Total Revenue</p>
                         <p className="text-2xl font-bold">
-                          ${(selectedClient.invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) || 0).toLocaleString()}
+                          ₹{(selectedClient.invoices?.reduce((sum, inv) => sum + (inv.total || 0), 0) || 0).toLocaleString()}
                         </p>
                       </div>
                     </div>

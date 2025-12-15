@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/auth-context";
+import { DebugConsole } from "@/components/debug-console";
+import { GlobalClickTracker } from "@/components/global-click-tracker";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,7 +37,11 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <AuthProvider>
-            {children}
+            <ErrorBoundary>
+              {children}
+              <GlobalClickTracker />
+              <DebugConsole />
+            </ErrorBoundary>
           </AuthProvider>
         </ThemeProvider>
       </body>

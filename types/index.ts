@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'project_manager' | 'client'
 
-export type ProjectStatus = 'planning' | 'in_progress' | 'in_review' | 'completed' | 'cancelled'
+export type ProjectStatus = 'planning' | 'in_progress' | 'in_review' | 'completed' | 'cancelled' | 'stuck'
 
 export type ServiceType = 'social_media' | 'video_production' | 'design_branding'
 
@@ -55,6 +55,13 @@ export interface User {
   avatar_url?: string
   role: UserRole
   company_name?: string
+  phone?: string
+  bio?: string
+  website?: string
+  industry?: string
+  address?: string
+  tax_id?: string
+  company_size?: string
   created_at: string
   updated_at: string
 }
@@ -174,4 +181,44 @@ export interface Milestone {
       company_name: string
     }
   }
+}
+
+export interface SubProject {
+  id: string
+  parent_project_id: string
+  name: string
+  description?: string
+  status: ProjectStatus
+  assigned_to?: string
+  progress_percentage: number
+  due_date?: string
+  video_url?: string
+  video_thumbnail_url?: string
+  completed_at?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+  // Joined data
+  assigned_user?: User
+}
+
+export interface SubProjectComment {
+  id: string
+  sub_project_id: string
+  user_id: string
+  comment_text: string
+  created_at: string
+  // Joined data
+  users?: User
+}
+
+export interface SubProjectUpdate {
+  id: string
+  sub_project_id: string
+  user_id: string
+  update_text: string
+  update_type: string
+  created_at: string
+  // Joined data
+  users?: User
 }

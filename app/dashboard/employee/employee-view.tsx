@@ -31,7 +31,7 @@ export default function EmployeeDashboard() {
             const supabase = createClient()
 
             try {
-                // Fetch projects assigned to this user (created_by)
+                // Fetch projects where user is creator OR team member
                 const { data: projectsData, error: projectsError } = await supabase
                     .from('projects')
                     .select('*, clients(company_name)')
@@ -40,8 +40,28 @@ export default function EmployeeDashboard() {
 
                 if (projectsError) throw projectsError
 
+                // Also fetch projects where user is a team member
+                const { data: teamProjects, error: teamError } = await supabase
+                    .from('project_team')
+                    .select('projects(*, clients(company_name))')
+                    .eq('user_id', user.id)
+
+                if (teamError) {
+                    console.warn('Team projects query failed:', teamError)
+                }
+
+                // Combine and deduplicate projects
+                const allProjects = [...(projectsData || [])]
+                const teamProjectsData = (teamProjects || []).map((tp: any) => tp.projects).filter(Boolean)
+                
+                teamProjectsData.forEach((tp: any) => {
+                    if (!allProjects.find(p => p.id === tp.id)) {
+                        allProjects.push(tp)
+                    }
+                })
+
                 // Fetch milestones for these projects
-                const projectIds = projectsData?.map(p => p.id) || []
+                const projectIds = allProjects.map(p => p.id)
                 const { data: milestonesData, error: milestonesError } = await supabase
                     .from('milestones')
                     .select('*, projects(name)')
@@ -62,16 +82,16 @@ export default function EmployeeDashboard() {
 
                 if (commentsError) throw commentsError
 
-                setProjects(projectsData || [])
+                setProjects(allProjects)
                 setMilestones(milestonesData || [])
                 setComments(commentsData || [])
 
                 // Calculate stats
-                const inProgressCount = projectsData?.filter(p => p.status === 'in_progress')?.length || 0
+                const inProgressCount = allProjects.filter(p => p.status === 'in_progress').length
                 const pendingMilestonesCount = milestonesData?.filter(m => m.status === 'pending' || m.status === 'in_progress')?.length || 0
 
                 setStats({
-                    assignedProjects: projectsData?.length || 0,
+                    assignedProjects: allProjects.length,
                     inProgressProjects: inProgressCount,
                     pendingMilestones: pendingMilestonesCount,
                     unreadComments: commentsData?.length || 0,
@@ -152,9 +172,11 @@ export default function EmployeeDashboard() {
             <div className="grid gap-4 lg:grid-cols-2">
                 {/* Active Projects */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Active Projects</CardTitle>
-                        <CardDescription>Projects you're currently working on</CardDescription>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <CardTitle className="text-lg md:text-xl">Active Projects</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Projects you're currently working on</CardDescription>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {projects.filter(p => p.status === 'in_progress').length === 0 ? (
@@ -200,9 +222,11 @@ export default function EmployeeDashboard() {
 
                 {/* Upcoming Milestones */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Upcoming Milestones</CardTitle>
-                        <CardDescription>Tasks and deadlines to track</CardDescription>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <CardTitle className="text-lg md:text-xl">Upcoming Milestones</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Tasks and deadlines to track</CardDescription>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {milestones.length === 0 ? (
@@ -236,9 +260,11 @@ export default function EmployeeDashboard() {
 
             {/* Client Feedback */}
             <Card>
-                <CardHeader>
-                    <CardTitle>Client Feedback</CardTitle>
-                    <CardDescription>Recent comments and requests from clients</CardDescription>
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                        <CardTitle className="text-lg md:text-xl">Client Feedback</CardTitle>
+                        <CardDescription className="text-xs md:text-sm">Recent comments and requests from clients</CardDescription>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     {comments.length === 0 ? (

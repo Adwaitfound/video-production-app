@@ -20,6 +20,8 @@ export function StatusBadge({ status }: StatusBadgeProps) {
       case 'pending':
       case 'draft':
         return 'warning'
+      case 'stuck':
+        return 'destructive'
       case 'cancelled':
       case 'overdue':
       case 'inactive':

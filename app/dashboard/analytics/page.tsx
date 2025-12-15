@@ -107,7 +107,7 @@ export default function AnalyticsPage() {
                         <DollarSign className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">${totalRevenue.toLocaleString()}</div>
+                        <div className="text-2xl font-bold">₹{totalRevenue.toLocaleString()}</div>
                         <p className="text-xs text-muted-foreground">From paid invoices</p>
                     </CardContent>
                 </Card>
@@ -138,7 +138,7 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            ${totalProjects > 0 ? Math.round(totalRevenue / totalProjects).toLocaleString() : 0}
+                            ₹{totalProjects > 0 ? Math.round(totalRevenue / totalProjects).toLocaleString() : 0}
                         </div>
                         <p className="text-xs text-muted-foreground">Per project</p>
                     </CardContent>
@@ -175,7 +175,7 @@ export default function AnalyticsPage() {
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                         <div>
                                             <div className="text-muted-foreground">Revenue</div>
-                                            <div className="font-semibold text-lg">${stat.total_revenue.toLocaleString()}</div>
+                                            <div className="font-semibold text-lg">₹{stat.total_revenue.toLocaleString()}</div>
                                         </div>
                                         <div>
                                             <div className="text-muted-foreground">Active Projects</div>
@@ -183,7 +183,7 @@ export default function AnalyticsPage() {
                                         </div>
                                         <div>
                                             <div className="text-muted-foreground">Avg Value</div>
-                                            <div className="font-semibold text-lg">${Math.round(stat.avg_project_value).toLocaleString()}</div>
+                                            <div className="font-semibold text-lg">₹{Math.round(stat.avg_project_value).toLocaleString()}</div>
                                         </div>
                                         <div>
                                             <div className="text-muted-foreground">Revenue Share</div>

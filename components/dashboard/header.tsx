@@ -17,6 +17,7 @@ import { useTheme } from "next-themes"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Sidebar } from "./sidebar"
 import { useAuth } from "@/contexts/auth-context"
+import { debug } from "@/lib/debug"
 
 export function Header() {
   const { setTheme, theme } = useTheme()
@@ -24,6 +25,7 @@ export function Header() {
   const { user, logout } = useAuth()
 
   const handleLogout = () => {
+    debug.log('HEADER', 'Logout clicked', { user: user?.email })
     logout()
   }
 
@@ -80,14 +82,14 @@ export function Header() {
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium leading-none">{user?.full_name || "Admin User"}</p>
+              <p className="text-sm font-medium leading-none">{user?.full_name || "User"}</p>
               <p className="text-xs leading-none text-muted-foreground">
-                {user?.email || "admin@videoproduction.com"}
+                {user?.email || "Loading..."}
               </p>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>
             <User className="mr-2 h-4 w-4" />
             <span>Profile</span>
           </DropdownMenuItem>

@@ -2,30 +2,53 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-export async function createClientAccount(formData: {
+type ClientFormData = {
     company_name: string
     contact_person: string
     email: string
     phone: string
     address: string
-}) {
+}
+
+type ClientResult = {
+    success: boolean
+    credentials?: {
+        email: string
+        password: string
+    }
+    error?: string
+}
+
+export async function createClientAccount(formData: ClientFormData): Promise<ClientResult> {
     try {
-        // Create admin client with service role
-        const supabaseAdmin = createClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.SUPABASE_SERVICE_ROLE_KEY!,
-            {
-                auth: {
-                    autoRefreshToken: false,
-                    persistSession: false
-                }
+        console.log('[SERVER] createClientAccount called with:', { company_name: formData.company_name, email: formData.email })
+        
+        // Validate environment variables
+        const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+        if (!url) {
+            console.error('[SERVER] Missing NEXT_PUBLIC_SUPABASE_URL')
+            return { success: false, error: 'NEXT_PUBLIC_SUPABASE_URL is not configured' }
+        }
+
+        if (!key) {
+            console.error('[SERVER] Missing SUPABASE_SERVICE_ROLE_KEY')
+            return { success: false, error: 'SUPABASE_SERVICE_ROLE_KEY is not configured' }
+        }
+
+        console.log('[SERVER] Creating admin client...')
+        const supabaseAdmin = createClient(url, key, {
+            auth: {
+                autoRefreshToken: false,
+                persistSession: false
             }
-        )
+        })
 
         // Generate a random password
         const generatedPassword = Math.random().toString(36).slice(-10) + Math.random().toString(36).slice(-10).toUpperCase()
 
-        // Create auth user account for the client
+        console.log('[SERVER] Creating auth user...')
         const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email: formData.email,
             password: generatedPassword,
@@ -36,10 +59,19 @@ export async function createClientAccount(formData: {
             }
         })
 
-        if (authError) throw authError
-        if (!authData.user) throw new Error('Failed to create user account')
+        if (authError) {
+            console.error('[SERVER] Auth error:', authError)
+            return { success: false, error: `Auth error: ${authError.message}` }
+        }
 
-        // Create user record
+        if (!authData.user?.id) {
+            console.error('[SERVER] No user ID returned from auth')
+            return { success: false, error: 'Failed to create auth user' }
+        }
+
+        console.log('[SERVER] Auth user created:', authData.user.id)
+
+        console.log('[SERVER] Inserting user record...')
         const { error: userError } = await supabaseAdmin
             .from('users')
             .insert({
@@ -50,9 +82,14 @@ export async function createClientAccount(formData: {
                 company_name: formData.company_name,
             })
 
-        if (userError) throw userError
+        if (userError) {
+            console.error('[SERVER] User insert error:', userError)
+            return { success: false, error: `User insert error: ${userError.message}` }
+        }
 
-        // Create client record
+        console.log('[SERVER] User record created')
+
+        console.log('[SERVER] Inserting client record...')
         const { error: clientError } = await supabaseAdmin
             .from('clients')
             .insert([{
@@ -60,27 +97,33 @@ export async function createClientAccount(formData: {
                 company_name: formData.company_name,
                 contact_person: formData.contact_person,
                 email: formData.email,
-                phone: formData.phone,
-                address: formData.address,
+                phone: formData.phone || '',
+                address: formData.address || '',
                 status: 'active',
                 total_projects: 0,
                 total_revenue: 0,
             }])
 
-        if (clientError) throw clientError
+        if (clientError) {
+            console.error('[SERVER] Client insert error:', clientError)
+            return { success: false, error: `Client insert error: ${clientError.message}` }
+        }
 
-        return {
+        console.log('[SERVER] Client record created successfully')
+        const result: ClientResult = {
             success: true,
             credentials: {
                 email: formData.email,
                 password: generatedPassword
             }
         }
+        console.log('[SERVER] Returning success result')
+        return result
     } catch (error: any) {
-        console.error('Error creating client:', error)
+        console.error('[SERVER] Caught exception:', error?.message || String(error))
         return {
             success: false,
-            error: error.message || 'Failed to create client'
+            error: `Exception: ${error?.message || String(error)}`
         }
     }
 }

@@ -24,6 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Upload, Link as LinkIcon, FileText, Image, Video, File, Download, ExternalLink, Trash2, Loader2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { debug } from "@/lib/debug"
 import type { ProjectFile, FileCategory } from "@/types"
 import { FILE_CATEGORIES, validateFileSize, formatFileSize, getFileType, getGoogleDriveEmbedUrl } from "@/lib/file-upload"
 import { useAuth } from "@/contexts/auth-context"
@@ -39,6 +40,7 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
     const [files, setFiles] = useState<ProjectFile[]>([])
     const [loading, setLoading] = useState(false)
     const [uploading, setUploading] = useState(false)
+    const [linkSubmitting, setLinkSubmitting] = useState(false)
     const [savingDrive, setSavingDrive] = useState(false)
     const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false)
     const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false)
@@ -71,6 +73,7 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
         const supabase = createClient()
 
         try {
+            debug.log('FILE_MANAGER', 'Fetching files...', { projectId })
             const { data, error } = await supabase
                 .from('project_files')
                 .select('*')
@@ -79,15 +82,20 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
 
             if (error) throw error
             setFiles(data || [])
+            debug.success('FILE_MANAGER', 'Files fetched', { count: data?.length })
         } catch (error) {
             console.error('Error fetching files:', error)
+            debug.error('FILE_MANAGER', 'Error fetching files', {
+                message: (error as any)?.message,
+                code: (error as any)?.code,
+            })
         } finally {
             setLoading(false)
         }
     }
 
     async function handleFileUpload() {
-        if (!selectedFile) return
+        if (!selectedFile || uploading) return
 
         const validation = validateFileSize(selectedFile)
         if (!validation.valid) {
@@ -99,6 +107,12 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
         const supabase = createClient()
 
         try {
+            debug.log('FILE_MANAGER', 'Upload start', {
+                projectId,
+                name: selectedFile.name,
+                size: selectedFile.size,
+                category: uploadCategory,
+            })
             // Upload to Supabase Storage
             const filePath = `${projectId}/${Date.now()}-${selectedFile.name}`
             const { error: uploadError } = await supabase.storage
@@ -129,61 +143,113 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
 
             if (dbError) throw dbError
 
-            // Reset form and refresh
+            // Reset form and close first
             setSelectedFile(null)
             setUploadDescription("")
             setIsUploadDialogOpen(false)
-            fetchFiles()
+            debug.success('FILE_MANAGER', 'Upload saved, dialog closed')
+            
+            // Then refresh
+            await fetchFiles()
         } catch (error: any) {
             console.error('Error uploading file:', error)
+            debug.error('FILE_MANAGER', 'Upload error', {
+                message: error?.message,
+                code: error?.code,
+                details: error?.details,
+                hint: error?.hint,
+            })
             alert(error.message || 'Failed to upload file')
         } finally {
             setUploading(false)
+            debug.log('FILE_MANAGER', 'Upload end')
         }
     }
 
     async function handleAddLink() {
-        if (!linkUrl || !linkName) {
-            alert('Please provide both URL and file name')
+        if (!linkUrl || !linkName || linkSubmitting) {
+            if (!linkUrl || !linkName) {
+                alert('Please provide both URL and file name')
+            }
             return
         }
 
-        setUploading(true)
+        setLinkSubmitting(true)
         const supabase = createClient()
 
         try {
-            const { error } = await supabase
-                .from('project_files')
-                .insert({
-                    project_id: projectId,
-                    file_name: linkName,
-                    file_type: getFileType(linkName),
-                    file_category: linkCategory,
-                    storage_type: 'google_drive',
-                    file_url: linkUrl,
-                    description: linkDescription,
-                    uploaded_by: user?.id,
+            debug.log('FILE_MANAGER', 'Add link start', {
+                projectId,
+                name: linkName,
+                url: linkUrl,
+                category: linkCategory,
+            })
+            // Wrap insert in a timeout to avoid indefinite spinner if network hangs
+            async function insertWithTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+                let timeoutId: any
+                const timeout = new Promise<never>((_, reject) => {
+                    timeoutId = setTimeout(() => reject(new Error('Add link timed out. Check network or RLS policies.')), ms)
                 })
+                try {
+                    const result = await Promise.race([p, timeout]) as T
+                    clearTimeout(timeoutId)
+                    return result
+                } catch (err) {
+                    clearTimeout(timeoutId)
+                    throw err
+                }
+            }
+
+            debug.log('FILE_MANAGER', 'Add link inserting...')
+            const { error } = await insertWithTimeout(
+                supabase
+                    .from('project_files')
+                    .insert({
+                        project_id: projectId,
+                        file_name: linkName,
+                        file_type: getFileType(linkName),
+                        file_category: linkCategory,
+                        storage_type: 'google_drive',
+                        file_url: linkUrl,
+                        description: linkDescription,
+                        uploaded_by: user?.id,
+                    }),
+                12000
+            ) as any
 
             if (error) throw error
 
-            // Reset form and refresh
+            // Reset form and close first
             setLinkUrl("")
             setLinkName("")
             setLinkDescription("")
             setIsLinkDialogOpen(false)
-            fetchFiles()
+            debug.success('FILE_MANAGER', 'Link saved, dialog closed')
+            
+            // Then refresh
+            await fetchFiles()
         } catch (error: any) {
             console.error('Error adding link:', error)
-            alert(error.message || 'Failed to add link')
+            debug.error('FILE_MANAGER', 'Add link error', {
+                message: error?.message,
+                code: error?.code,
+                details: error?.details,
+                hint: error?.hint,
+            })
+            const msg =
+                error?.message?.includes('row-level security')
+                    ? 'You do not have permissions to add links. Ask an admin or project manager.'
+                    : error?.message || 'Failed to add link'
+            alert(msg)
         } finally {
-            setUploading(false)
+            setLinkSubmitting(false)
+            debug.log('FILE_MANAGER', 'Add link end')
         }
     }
 
     async function handleUpdateDriveFolder() {
         const trimmed = newDriveFolderUrl.trim()
-        if (!trimmed) return
+        if (!trimmed || savingDrive) return
 
         const supabase = createClient()
         setSavingDrive(true)
@@ -196,8 +262,8 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
 
             if (error) throw error
 
-            onDriveFolderUpdate?.(trimmed)
             setIsDriveFolderDialogOpen(false)
+            onDriveFolderUpdate?.(trimmed)
         } catch (error: any) {
             console.error('Error updating drive folder:', error)
             alert(error.message || 'Failed to update drive folder')
@@ -287,11 +353,11 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
 
             {/* Action Buttons */}
             <div className="flex gap-2">
-                <Button onClick={() => setIsUploadDialogOpen(true)}>
+                <Button onClick={() => { debug.log('FILE_MANAGER', 'Open upload dialog'); setIsUploadDialogOpen(true) }}>
                     <Upload className="h-4 w-4 mr-2" />
                     Upload File
                 </Button>
-                <Button variant="outline" onClick={() => setIsLinkDialogOpen(true)}>
+                <Button variant="outline" onClick={() => { debug.log('FILE_MANAGER', 'Open add link dialog'); setIsLinkDialogOpen(true) }}>
                     <LinkIcon className="h-4 w-4 mr-2" />
                     Add Drive Link
                 </Button>
@@ -364,155 +430,165 @@ export function FileManager({ projectId, driveFolderUrl, onDriveFolderUpdate }: 
             {/* Upload File Dialog */}
             <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Upload File</DialogTitle>
-                        <DialogDescription>
-                            Upload documents, images, and small videos to Supabase storage
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div>
-                            <Label>File</Label>
-                            <Input
-                                type="file"
-                                onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-                                className="mt-1"
-                            />
-                            {selectedFile && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    {formatFileSize(selectedFile.size)} - Max: {formatFileSize(validateFileSize(selectedFile).valid ? 999999999 : 0)}
-                                </p>
-                            )}
+                    <form onSubmit={(e) => { e.preventDefault(); handleFileUpload(); }}>
+                        <DialogHeader>
+                            <DialogTitle>Upload File</DialogTitle>
+                            <DialogDescription>
+                                Upload documents, images, and small videos to Supabase storage
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div>
+                                <Label>File</Label>
+                                <Input
+                                    type="file"
+                                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                                    className="mt-1"
+                                    required
+                                />
+                                {selectedFile && (
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        {formatFileSize(selectedFile.size)} - Max: {formatFileSize(validateFileSize(selectedFile).valid ? 999999999 : 0)}
+                                    </p>
+                                )}
+                            </div>
+                            <div>
+                                <Label>Category</Label>
+                                <Select value={uploadCategory} onValueChange={(v) => setUploadCategory(v as FileCategory)}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.entries(FILE_CATEGORIES).map(([key, config]) => (
+                                            <SelectItem key={key} value={key}>
+                                                {config.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Description (Optional)</Label>
+                                <Textarea
+                                    value={uploadDescription}
+                                    onChange={(e) => setUploadDescription(e.target.value)}
+                                    className="mt-1"
+                                    placeholder="Brief description"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Label>Category</Label>
-                            <Select value={uploadCategory} onValueChange={(v) => setUploadCategory(v as FileCategory)}>
-                                <SelectTrigger className="mt-1">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(FILE_CATEGORIES).map(([key, config]) => (
-                                        <SelectItem key={key} value={key}>
-                                            {config.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <Label>Description (Optional)</Label>
-                            <Textarea
-                                value={uploadDescription}
-                                onChange={(e) => setUploadDescription(e.target.value)}
-                                className="mt-1"
-                                placeholder="Brief description"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsUploadDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleFileUpload} disabled={!selectedFile || uploading}>
-                            {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Upload
-                        </Button>
-                    </DialogFooter>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsUploadDialogOpen(false)} disabled={uploading}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={!selectedFile || uploading}>
+                                {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Upload
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
             {/* Add Drive Link Dialog */}
-            <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+            <Dialog open={isLinkDialogOpen} onOpenChange={(open) => { setIsLinkDialogOpen(open); if (!open) debug.log('FILE_MANAGER', 'Add link dialog closed'); }}>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Add Google Drive Link</DialogTitle>
-                        <DialogDescription>
-                            Add a link to a file stored in Google Drive
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div>
-                            <Label>File Name</Label>
-                            <Input
-                                value={linkName}
-                                onChange={(e) => setLinkName(e.target.value)}
-                                className="mt-1"
-                                placeholder="Final_Edit_v3.mp4"
-                            />
+                    <form onSubmit={(e) => { e.preventDefault(); handleAddLink(); }}>
+                        <DialogHeader>
+                            <DialogTitle>Add Google Drive Link</DialogTitle>
+                            <DialogDescription>
+                                Add a link to a file stored in Google Drive
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div>
+                                <Label>File Name</Label>
+                                <Input
+                                    value={linkName}
+                                    onChange={(e) => setLinkName(e.target.value)}
+                                    className="mt-1"
+                                    placeholder="Final_Edit_v3.mp4"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label>Google Drive URL</Label>
+                                <Input
+                                    value={linkUrl}
+                                    onChange={(e) => setLinkUrl(e.target.value)}
+                                    className="mt-1"
+                                    placeholder="https://drive.google.com/file/d/..."
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <Label>Category</Label>
+                                <Select value={linkCategory} onValueChange={(v) => setLinkCategory(v as FileCategory)}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {Object.entries(FILE_CATEGORIES).map(([key, config]) => (
+                                            <SelectItem key={key} value={key}>
+                                                {config.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label>Description (Optional)</Label>
+                                <Textarea
+                                    value={linkDescription}
+                                    onChange={(e) => setLinkDescription(e.target.value)}
+                                    className="mt-1"
+                                    placeholder="Brief description"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <Label>Google Drive URL</Label>
-                            <Input
-                                value={linkUrl}
-                                onChange={(e) => setLinkUrl(e.target.value)}
-                                className="mt-1"
-                                placeholder="https://drive.google.com/file/d/..."
-                            />
-                        </div>
-                        <div>
-                            <Label>Category</Label>
-                            <Select value={linkCategory} onValueChange={(v) => setLinkCategory(v as FileCategory)}>
-                                <SelectTrigger className="mt-1">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(FILE_CATEGORIES).map(([key, config]) => (
-                                        <SelectItem key={key} value={key}>
-                                            {config.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <Label>Description (Optional)</Label>
-                            <Textarea
-                                value={linkDescription}
-                                onChange={(e) => setLinkDescription(e.target.value)}
-                                className="mt-1"
-                                placeholder="Brief description"
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsLinkDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleAddLink} disabled={!linkUrl || !linkName || uploading}>
-                            {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Add Link
-                        </Button>
-                    </DialogFooter>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsLinkDialogOpen(false)} disabled={linkSubmitting}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={!linkUrl || !linkName || linkSubmitting}>
+                                {linkSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Add Link
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
             {/* Update Drive Folder Dialog */}
             <Dialog open={isDriveFolderDialogOpen} onOpenChange={setIsDriveFolderDialogOpen}>
                 <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Set Google Drive Folder</DialogTitle>
-                        <DialogDescription>
-                            Add the main project folder URL from Google Drive
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Label>Folder URL</Label>
-                        <Input
-                            value={newDriveFolderUrl}
-                            onChange={(e) => setNewDriveFolderUrl(e.target.value)}
-                            className="mt-1"
-                            placeholder="https://drive.google.com/drive/folders/..."
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsDriveFolderDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={handleUpdateDriveFolder} disabled={!newDriveFolderUrl || savingDrive}>
-                            {savingDrive && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Save
-                        </Button>
-                    </DialogFooter>
+                    <form onSubmit={(e) => { e.preventDefault(); handleUpdateDriveFolder(); }}>
+                        <DialogHeader>
+                            <DialogTitle>Set Google Drive Folder</DialogTitle>
+                            <DialogDescription>
+                                Add the main project folder URL from Google Drive
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4">
+                            <Label>Folder URL</Label>
+                            <Input
+                                value={newDriveFolderUrl}
+                                onChange={(e) => setNewDriveFolderUrl(e.target.value)}
+                                className="mt-1"
+                                placeholder="https://drive.google.com/drive/folders/..."
+                                required
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setIsDriveFolderDialogOpen(false)} disabled={savingDrive}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" disabled={!newDriveFolderUrl || savingDrive}>
+                                {savingDrive && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Save
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>

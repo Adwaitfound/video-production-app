@@ -28,6 +28,7 @@ import type { User, Project } from "@/types"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
 import { createTeamMember } from "@/app/actions/create-team-member"
+import { debug } from "@/lib/debug"
 
 type TeamMember = User & {
     projects?: Array<{
@@ -71,12 +72,19 @@ export default function TeamPage() {
         setLoading(true)
 
         try {
+            debug.log('TEAM', 'Fetching team members...')
             // Fetch all team members (admins and project managers)
             const { data: usersData, error: usersError } = await supabase
                 .from('users')
                 .select('*')
                 .in('role', ['admin', 'project_manager'])
                 .order('full_name')
+
+            if (usersError) {
+                debug.error('TEAM', 'Fetch users error', { message: usersError.message, code: usersError.code })
+                throw usersError
+            }
+            debug.success('TEAM', 'Team members fetched', { count: usersData?.length })
 
             if (usersError) throw usersError
 
@@ -128,7 +136,7 @@ export default function TeamPage() {
 
     async function handleAssignProject(e: React.FormEvent) {
         e.preventDefault()
-        if (!selectedMember || !selectedProjectId) return
+        if (!selectedMember || !selectedProjectId || submitting) return
 
         setSubmitting(true)
         const supabase = createClient()
@@ -145,13 +153,13 @@ export default function TeamPage() {
 
             if (error) throw error
 
-            // Refresh data
-            await fetchData()
-
-            // Reset form
+            // Close dialog and reset form BEFORE refreshing
+            setIsAssignDialogOpen(false)
             setSelectedProjectId("")
             setProjectRole("")
-            setIsAssignDialogOpen(false)
+
+            // Then refresh data
+            await fetchData()
         } catch (error: any) {
             console.error('Error assigning project:', {
                 message: error?.message,
@@ -194,6 +202,8 @@ export default function TeamPage() {
 
     async function handleAddMember(e: React.FormEvent) {
         e.preventDefault()
+        if (submitting) return
+        
         setSubmitting(true)
 
         try {
@@ -209,17 +219,17 @@ export default function TeamPage() {
                 throw new Error(result.error)
             }
 
-            // Refresh data
-            await fetchData()
-
-            // Reset form
+            // Close dialog and reset form BEFORE refreshing
+            setIsAddMemberDialogOpen(false)
             setMemberFormData({
                 email: "",
                 full_name: "",
                 role: "project_manager",
                 password: "",
             })
-            setIsAddMemberDialogOpen(false)
+
+            // Then refresh data
+            await fetchData()
 
             // Show success message
             alert(

@@ -2,12 +2,14 @@
 
 import React from "react"
 import { useState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
+import { debug } from "@/lib/debug"
 import {
   Select,
   SelectContent,
@@ -25,16 +27,18 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { StatusBadge } from "@/components/shared/status-badge"
-import { Plus, Search, Calendar, DollarSign, Loader2, FolderKanban, Video, Share2, Palette, Eye, Edit, Trash2, Users, FileText, CheckSquare, Upload, TrendingUp, Clock, AlertCircle, ExternalLink, Image, File as FileIcon, Target, UserCheck } from "lucide-react"
+import { Plus, Search, Calendar, DollarSign, Loader2, FolderKanban, Video, Share2, Palette, Eye, Edit, Trash2, Users, FileText, CheckSquare, Upload, TrendingUp, Clock, AlertCircle, ExternalLink, Image, File as FileIcon, Target, UserCheck, MessageSquare, ListTodo } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import type { Project, Client, ProjectStatus, ServiceType, ProjectFile, Milestone, User } from "@/types"
-import { SERVICE_TYPES } from "@/types"
+import type { Project, Client, ProjectStatus, ServiceType, ProjectFile, Milestone, User, SubProject, SubProjectComment, SubProjectUpdate } from "@/types"
+import { SERVICE_TYPES, SERVICE_TYPE_OPTIONS } from "@/types"
 import { useAuth } from "@/contexts/auth-context"
 import { Badge } from "@/components/ui/badge"
 import { FileManager } from "@/components/projects/file-manager"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function ProjectsPage() {
   const { user } = useAuth()
+  const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [projectFiles, setProjectFiles] = useState<Record<string, ProjectFile[]>>({})
@@ -50,6 +54,7 @@ export default function ProjectsPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
   const [isMilestoneDialogOpen, setIsMilestoneDialogOpen] = useState(false)
   const [isTeamDialogOpen, setIsTeamDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [projectTeam, setProjectTeam] = useState<Record<string, User[]>>({})
   const [availableUsers, setAvailableUsers] = useState<User[]>([])
   const [selectedUserId, setSelectedUserId] = useState("")
@@ -59,6 +64,44 @@ export default function ProjectsPage() {
     description: "",
     due_date: "",
   })
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    client_id: "",
+    description: "",
+    service_type: "video_production" as ServiceType,
+    budget: "",
+    start_date: "",
+    deadline: "",
+    status: "planning" as ProjectStatus,
+    progress_percentage: 0,
+  })
+
+  // Sub-projects state
+  const [subProjects, setSubProjects] = useState<Record<string, SubProject[]>>({})
+  const [selectedSubProject, setSelectedSubProject] = useState<SubProject | null>(null)
+  const [isSubProjectDialogOpen, setIsSubProjectDialogOpen] = useState(false)
+  const [isEditSubProjectDialogOpen, setIsEditSubProjectDialogOpen] = useState(false)
+  const [subProjectFormData, setSubProjectFormData] = useState({
+    name: "",
+    description: "",
+    assigned_to: "unassigned",
+    due_date: "",
+    status: "planning" as ProjectStatus,
+    video_url: "",
+  })
+  const [editSubProjectFormData, setEditSubProjectFormData] = useState({
+    name: "",
+    description: "",
+    assigned_to: "unassigned",
+    due_date: "",
+    status: "planning" as ProjectStatus,
+    video_url: "",
+  })
+  const [subProjectComments, setSubProjectComments] = useState<Record<string, SubProjectComment[]>>({})
+  const [subProjectUpdates, setSubProjectUpdates] = useState<Record<string, SubProjectUpdate[]>>({})
+  const [newComment, setNewComment] = useState("")
+  const [newUpdate, setNewUpdate] = useState("")
+  const [isSubProjectDetailOpen, setIsSubProjectDetailOpen] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -72,11 +115,28 @@ export default function ProjectsPage() {
     status: "planning" as ProjectStatus,
   })
 
+  // Handle URL parameters for service filter
+  useEffect(() => {
+    const serviceParam = searchParams.get('service')
+    if (serviceParam && ['video_production', 'social_media', 'design_branding'].includes(serviceParam)) {
+      setServiceFilter(serviceParam)
+    }
+  }, [searchParams])
+
   useEffect(() => {
     fetchData()
   }, [])
 
+  // Fetch team members when team dialog opens with a selected project
+  useEffect(() => {
+    if (isTeamDialogOpen && selectedProject) {
+      console.log('Team dialog opened, fetching members for project:', selectedProject.id)
+      fetchProjectTeamMembers(selectedProject.id)
+    }
+  }, [isTeamDialogOpen, selectedProject?.id])
+
   async function fetchData() {
+    debug.log('FETCH_DATA', 'Starting data fetch...')
     const supabase = createClient()
     setLoading(true)
 
@@ -88,6 +148,7 @@ export default function ProjectsPage() {
         .order('created_at', { ascending: false })
 
       if (projectsError) throw projectsError
+      debug.success('FETCH_DATA', 'Projects fetched', { count: projectsData?.length })
 
       // Fetch clients for dropdown
       const { data: clientsData, error: clientsError } = await supabase
@@ -97,7 +158,8 @@ export default function ProjectsPage() {
         .order('company_name')
 
       if (clientsError) throw clientsError
-
+      debug.success('FETCH_DATA', 'Clients fetched', { count: clientsData?.length })
+      
       setProjects(projectsData || [])
       setClients(clientsData || [])
 
@@ -165,39 +227,49 @@ export default function ProjectsPage() {
 
       // Fetch project team members
       if (projectsData && projectsData.length > 0) {
+        debug.log('FETCH_DATA', 'Fetching team members for projects...', { projectIds: projectsData.map(p => p.id) })
         const projectIds = projectsData.map((p) => p.id)
         const { data: teamData, error: teamError } = await supabase
           .from('project_team')
-          .select('project_id, user_id, users(id, email, full_name, avatar_url, role)')
+          .select('project_id, user_id, user:users!user_id(id, email, full_name, avatar_url, role)')
           .in('project_id', projectIds)
 
         if (teamError) {
+          debug.warn('FETCH_DATA', 'Team fetch error:', teamError)
           console.warn('Project team table not available:', teamError.message)
         } else {
+          debug.log('FETCH_DATA', 'Team data received', { rawCount: teamData?.length })
           const teamMap = (teamData || []).reduce((acc, assignment: any) => {
             if (!acc[assignment.project_id]) {
               acc[assignment.project_id] = []
             }
-            if (assignment.users) {
-              acc[assignment.project_id].push(assignment.users as User)
+            if (assignment.user) {
+              acc[assignment.project_id].push(assignment.user as User)
             }
             return acc
           }, {} as Record<string, User[]>)
 
+          debug.success('FETCH_DATA', 'Team members mapped', { projectsWithTeam: Object.keys(teamMap).length, teamMap })
           setProjectTeam(teamMap)
         }
       }
 
       // Fetch all users for team assignment (only admins/PMs)
-      if (user?.role === 'admin') {
+      if (user?.role === 'admin' || user?.role === 'project_manager') {
         const { data: allUsers, error: usersError } = await supabase
           .from('users')
           .select('*')
-          .in('role', ['admin', 'project_manager'])
-          .order('full_name')
+          .order('full_name', { ascending: true, nullsFirst: false })
 
-        if (usersError) throw usersError
-        setAvailableUsers(allUsers || [])
+        if (usersError) {
+          console.error('Error fetching users:', usersError)
+        } else {
+          // Filter to only show admin and project_manager roles
+          const filteredUsers = (allUsers || []).filter(u => 
+            u.role === 'admin' || u.role === 'project_manager'
+          )
+          setAvailableUsers(filteredUsers)
+        }
       }
     } catch (error: any) {
       console.error('Error fetching data:', {
@@ -213,6 +285,8 @@ export default function ProjectsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (submitting) return
+    
     setSubmitting(true)
 
     const supabase = createClient()
@@ -236,10 +310,7 @@ export default function ProjectsPage() {
 
       if (error) throw error
 
-      // Refresh projects list
-      await fetchData()
-
-      // Reset form and close dialog
+      // Reset form and close dialog first
       setFormData({
         name: "",
         client_id: "",
@@ -251,6 +322,9 @@ export default function ProjectsPage() {
         status: "planning",
       })
       setIsDialogOpen(false)
+
+      // Then refresh projects list
+      await fetchData()
     } catch (error: any) {
       console.error('Error creating project:', error)
       alert(error.message || 'Failed to create project')
@@ -261,7 +335,7 @@ export default function ProjectsPage() {
 
   async function handleAddMilestone(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedProject) return
+    if (!selectedProject || submitting) return
 
     setSubmitting(true)
     const supabase = createClient()
@@ -279,12 +353,12 @@ export default function ProjectsPage() {
 
       if (error) throw error
 
-      // Refresh data
-      await fetchData()
-
-      // Reset form
+      // Reset form and close first
       setMilestoneFormData({ title: "", description: "", due_date: "" })
       setIsMilestoneDialogOpen(false)
+
+      // Then refresh data
+      await fetchData()
     } catch (error: any) {
       console.error('Error adding milestone:', {
         message: error?.message,
@@ -300,7 +374,21 @@ export default function ProjectsPage() {
 
   async function handleAssignTeamMember(e: React.FormEvent) {
     e.preventDefault()
-    if (!selectedProject || !selectedUserId) return
+    if (!selectedProject || !selectedUserId || submitting) return
+
+    debug.log('ASSIGN_TEAM', 'Start team assignment', { projectId: selectedProject.id, userId: selectedUserId })
+    console.log('=== ASSIGN TEAM MEMBER START ===')
+    console.log('Selected Project ID:', selectedProject.id)
+    console.log('Selected User ID:', selectedUserId)
+    console.log('Current projectTeam state:', projectTeam)
+
+    // Check if user is already assigned
+    const alreadyAssigned = projectTeam[selectedProject.id]?.find(m => m.id === selectedUserId)
+    if (alreadyAssigned) {
+      debug.warn('ASSIGN_TEAM', 'User already assigned', { userId: selectedUserId })
+      alert('This team member is already assigned to this project')
+      return
+    }
 
     setSubmitting(true)
     const supabase = createClient()
@@ -315,23 +403,40 @@ export default function ProjectsPage() {
           assigned_by: user?.id,
         })
 
-      if (error) throw error
+      if (error) {
+        // Handle duplicate key error specifically
+        if (error.code === '23505') {
+          throw new Error('This team member is already assigned to this project')
+        }
+        throw error
+      }
 
-      // Refresh data
-      await fetchData()
+      debug.success('ASSIGN_TEAM', 'Team member inserted', { projectId: selectedProject.id, userId: selectedUserId })
+      console.log('Team member inserted successfully')
 
-      // Reset form
+      // Reset form first
       setSelectedUserId("")
       setTeamRole("")
-      setIsTeamDialogOpen(false)
+
+      // Refresh team members for this project and wait for it
+      debug.log('ASSIGN_TEAM', 'Fetching updated team members...')
+      console.log('Fetching updated team members...')
+      const updatedMembers = await fetchProjectTeamMembers(selectedProject.id)
+      debug.success('ASSIGN_TEAM', 'Members updated', { members: updatedMembers.map(m => m.email) })
+      console.log('Updated members returned:', updatedMembers)
+      console.log('=== ASSIGN TEAM MEMBER END ===')
+      
+      // Don't close dialog - let user see the updated list
+      // setIsTeamDialogOpen(false)
     } catch (error: any) {
+      debug.error('ASSIGN_TEAM', 'Assignment failed', error)
       console.error('Error assigning team member:', {
         message: error?.message,
         code: error?.code,
         details: error?.details,
         hint: error?.hint
       })
-      alert(error?.message || 'Failed to assign team member. The project_team table may not exist yet. Please run migration 008.')
+      alert(error?.message || 'Failed to assign team member')
     } finally {
       setSubmitting(false)
     }
@@ -352,11 +457,178 @@ export default function ProjectsPage() {
 
       if (error) throw error
 
-      // Refresh data
-      await fetchData()
+      // Update local state immediately
+      setProjectTeam(prev => ({
+        ...prev,
+        [selectedProject.id]: prev[selectedProject.id]?.filter(m => m.id !== userId) || []
+      }))
     } catch (error: any) {
       console.error('Error removing team member:', error)
-      alert(error.message || 'Failed to remove team member')
+      alert('Failed to remove team member')
+    }
+  }
+
+  async function fetchProjectTeamMembers(projectId: string) {
+    const supabase = createClient()
+    
+    try {
+      const { data, error } = await supabase
+        .from('project_team')
+        .select('*, user:users!user_id(id, email, full_name, avatar_url, role)')
+        .eq('project_id', projectId)
+
+      if (error) {
+        debug.error('FETCH_TEAM', 'Query error:', error)
+        console.error('Error fetching team members:', error)
+        throw error
+      }
+
+      debug.log('FETCH_TEAM', 'Raw data from query:', { projectId, count: data?.length })
+      console.log('Fetched team data:', data)
+      const members = (data || []).map((assignment: any) => assignment.user as User).filter(Boolean)
+      debug.success('FETCH_TEAM', 'Members processed', { projectId, members: members.map(m => ({ id: m.id, email: m.email })) })
+      console.log('Processed team members:', members)
+      setProjectTeam(prev => ({ ...prev, [projectId]: members }))
+      return members
+    } catch (error) {
+      debug.error('FETCH_TEAM', 'Exception:', error)
+      console.error('Error in fetchProjectTeamMembers:', error)
+      return []
+    }
+  }
+
+  async function fetchSubProjects(projectId: string) {
+    const supabase = createClient()
+    
+    try {
+      const { data: subProjectsData, error } = await supabase
+        .from('sub_projects')
+        .select('*, assigned_user:users!assigned_to(id, email, full_name, avatar_url, role)')
+        .eq('parent_project_id', projectId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.warn('Sub-projects table not available:', error.message)
+        return
+      }
+
+      setSubProjects(prev => ({ ...prev, [projectId]: subProjectsData || [] }))
+    } catch (error: any) {
+      console.error('Error fetching sub-projects:', error)
+    }
+  }
+
+  async function handleAddSubProject(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedProject || submitting) return
+
+    setSubmitting(true)
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase
+        .from('sub_projects')
+        .insert({
+          parent_project_id: selectedProject.id,
+          name: subProjectFormData.name,
+          description: subProjectFormData.description,
+          assigned_to: subProjectFormData.assigned_to === "unassigned" ? null : subProjectFormData.assigned_to,
+          due_date: subProjectFormData.due_date || null,
+          status: subProjectFormData.status,
+          video_url: subProjectFormData.video_url || null,
+          created_by: user?.id,
+        })
+
+      if (error) throw error
+
+      // Reset form first
+      setSubProjectFormData({ name: "", description: "", assigned_to: "unassigned", due_date: "", status: "planning", video_url: "" })
+      setIsSubProjectDialogOpen(false)
+      
+      // Then fetch updated data
+      await fetchSubProjects(selectedProject.id)
+    } catch (error: any) {
+      console.error('Error adding sub-project:', error)
+      alert(error?.message || 'Failed to add sub-project. Please run migration 009.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleEditSubProject(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedSubProject || submitting) return
+
+    setSubmitting(true)
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase
+        .from('sub_projects')
+        .update({
+          name: editSubProjectFormData.name,
+          description: editSubProjectFormData.description,
+          assigned_to: editSubProjectFormData.assigned_to === "unassigned" ? null : editSubProjectFormData.assigned_to,
+          due_date: editSubProjectFormData.due_date || null,
+          status: editSubProjectFormData.status,
+          video_url: editSubProjectFormData.video_url || null,
+        })
+        .eq('id', selectedSubProject.id)
+
+      if (error) throw error
+
+      setIsEditSubProjectDialogOpen(false)
+      setSelectedSubProject(null)
+      
+      if (selectedProject) {
+        await fetchSubProjects(selectedProject.id)
+      }
+    } catch (error: any) {
+      console.error('Error updating sub-project:', error)
+      alert('Failed to update task')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleUpdateSubProjectProgress(subProjectId: string, progress: number) {
+    const supabase = createClient()
+    
+    try {
+      const { error } = await supabase
+        .from('sub_projects')
+        .update({ progress_percentage: progress })
+        .eq('id', subProjectId)
+
+      if (error) throw error
+
+      if (selectedProject) {
+        await fetchSubProjects(selectedProject.id)
+      }
+    } catch (error: any) {
+      console.error('Error updating sub-project progress:', error)
+    }
+  }
+
+  async function handleUpdateSubProjectStatus(subProjectId: string, status: ProjectStatus) {
+    const supabase = createClient()
+    
+    try {
+      const { error } = await supabase
+        .from('sub_projects')
+        .update({ 
+          status,
+          completed_at: status === 'completed' ? new Date().toISOString() : null
+        })
+        .eq('id', subProjectId)
+
+      if (error) throw error
+
+      if (selectedProject) {
+        await fetchSubProjects(selectedProject.id)
+      }
+    } catch (error: any) {
+      console.error('Error updating sub-project status:', error)
     }
   }
 
@@ -382,6 +654,69 @@ export default function ProjectsPage() {
   function openProjectDetails(project: Project) {
     setSelectedProject(project)
     setIsDetailModalOpen(true)
+    fetchSubProjects(project.id)
+  }
+
+  function openEditDialog(project: Project) {
+    setSelectedProject(project)
+    setEditFormData({
+      name: project.name,
+      client_id: project.client_id,
+      description: project.description || "",
+      service_type: project.service_type,
+      budget: project.budget?.toString() || "",
+      start_date: project.start_date || "",
+      deadline: project.deadline || "",
+      status: project.status,
+      progress_percentage: project.progress_percentage,
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  async function openTeamDialog(project: Project) {
+    setSelectedProject(project)
+    setIsTeamDialogOpen(true)
+    // Fetch team members immediately when dialog opens
+    await fetchProjectTeamMembers(project.id)
+  }
+
+  function openInvoices(project: Project) {
+    window.location.href = `/dashboard/invoices?project=${project.id}`
+  }
+
+  async function handleEditProject(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedProject || submitting) return
+
+    setSubmitting(true)
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          name: editFormData.name,
+          client_id: editFormData.client_id,
+          description: editFormData.description,
+          service_type: editFormData.service_type,
+          budget: editFormData.budget ? parseFloat(editFormData.budget) : null,
+          start_date: editFormData.start_date || null,
+          deadline: editFormData.deadline || null,
+          status: editFormData.status,
+          progress_percentage: editFormData.progress_percentage,
+        })
+        .eq('id', selectedProject.id)
+
+      if (error) throw error
+
+      setIsEditDialogOpen(false)
+      await fetchData()
+    } catch (error: any) {
+      console.error('Error updating project:', error)
+      alert(error.message || 'Failed to update project')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const getServiceIcon = (serviceType: ServiceType) => {
@@ -392,8 +727,17 @@ export default function ProjectsPage() {
     return SERVICE_TYPES[serviceType]?.label || serviceType
   }
 
-  const getServiceBadgeClass = (serviceType: ServiceType) => {
-    return SERVICE_TYPES[serviceType]?.bgColor + ' ' + SERVICE_TYPES[serviceType]?.textColor
+  const getServiceBadgeVariant = (serviceType: ServiceType): "default" | "secondary" | "destructive" | "outline" => {
+    switch (serviceType) {
+      case 'video_production':
+        return 'default'
+      case 'social_media':
+        return 'secondary'
+      case 'design_branding':
+        return 'outline'
+      default:
+        return 'secondary'
+    }
   }
 
   const getFileIcon = (fileType: string) => {
@@ -509,7 +853,7 @@ export default function ProjectsPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="grid gap-2">
-                    <Label htmlFor="budget">Budget ($)</Label>
+                    <Label htmlFor="budget">Budget (₹)</Label>
                     <Input
                       id="budget"
                       type="number"
@@ -532,6 +876,7 @@ export default function ProjectsPage() {
                         <SelectItem value="in_progress">In Progress</SelectItem>
                         <SelectItem value="in_review">In Review</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="stuck">Stuck</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -604,7 +949,7 @@ export default function ProjectsPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription className="text-xs">Total Budget</CardDescription>
-              <CardTitle className="text-2xl">${Math.round(projectStats.totalBudget / 1000)}k</CardTitle>
+              <CardTitle className="text-2xl">₹{Math.round(projectStats.totalBudget / 1000)}k</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">
@@ -623,6 +968,49 @@ export default function ProjectsPage() {
           </Card>
         </div>
       )}
+
+      {/* Service Type Filter Cards */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+        {Object.values(SERVICE_TYPES).map((service) => {
+          const serviceProjects = projects.filter(p => p.service_type === service.value)
+          const isSelected = serviceFilter === service.value
+          return (
+            <Card
+              key={service.value}
+              className={`cursor-pointer transition-all hover:shadow-lg ${isSelected ? 'ring-2 ring-primary' : ''}`}
+              onClick={() => setServiceFilter(isSelected ? 'all' : service.value)}
+            >
+              <CardHeader className={`pb-3 bg-gradient-to-br ${service.color} text-white rounded-t-lg`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="text-3xl">{service.icon}</div>
+                    <div>
+                      <CardTitle className="text-lg text-white">{service.label}</CardTitle>
+                      <CardDescription className="text-white/90 text-xs">{service.description}</CardDescription>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-2xl font-bold">{serviceProjects.length}</p>
+                    <p className="text-xs text-muted-foreground">Projects</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold text-green-600">
+                      {serviceProjects.filter(p => p.status === 'completed').length} Completed
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {serviceProjects.filter(p => p.status === 'in_progress').length} In Progress
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
 
       {/* Filters */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center">
@@ -668,6 +1056,7 @@ export default function ProjectsPage() {
             <SelectItem value="in_progress">In Progress</SelectItem>
             <SelectItem value="in_review">In Review</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
+            <SelectItem value="stuck">Stuck</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
@@ -729,7 +1118,7 @@ export default function ProjectsPage() {
                           </CardDescription>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge className={getServiceBadgeClass(project.service_type)}>
+                          <Badge variant={getServiceBadgeVariant(project.service_type)}>
                             <span className="mr-1">{getServiceIcon(project.service_type)}</span>
                             {getServiceLabel(project.service_type)}
                           </Badge>
@@ -738,7 +1127,8 @@ export default function ProjectsPage() {
                       </div>
 
                       {/* Team & Progress Row */}
-                      <div className="flex items-center gap-4 text-sm">
+                      <div className="flex flex-col gap-3 text-sm">
+                        {/* Creator */}
                         {project.created_by && projectCreators[project.created_by] && (
                           <div className="flex items-center gap-2">
                             <UserCheck className="h-4 w-4 text-muted-foreground" />
@@ -747,6 +1137,22 @@ export default function ProjectsPage() {
                             </span>
                           </div>
                         )}
+                        
+                        {/* Team Members */}
+                        {projectTeam[project.id] && projectTeam[project.id].length > 0 && (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Users className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                            <div className="flex gap-1 flex-wrap">
+                              {projectTeam[project.id].map((member) => (
+                                <Badge key={member.id} variant="secondary" className="text-xs">
+                                  {member.full_name || member.email.split('@')[0]}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Progress */}
                         <div className="flex items-center gap-2">
                           <TrendingUp className="h-4 w-4 text-muted-foreground" />
                           <span className="text-muted-foreground">{project.progress_percentage}% complete</span>
@@ -809,15 +1215,27 @@ export default function ProjectsPage() {
                       <Eye className="h-3 w-3 mr-1" />
                       View Details
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openEditDialog(project)}
+                    >
                       <Edit className="h-3 w-3 mr-1" />
                       Edit
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openTeamDialog(project)}
+                    >
                       <Users className="h-3 w-3 mr-1" />
                       Team
                     </Button>
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openInvoices(project)}
+                    >
                       <FileText className="h-3 w-3 mr-1" />
                       Invoice
                     </Button>
@@ -874,7 +1292,7 @@ export default function ProjectsPage() {
                           <DollarSign className="h-3 w-3" />
                           Budget
                         </div>
-                        <p className="font-medium">${project.budget.toLocaleString()}</p>
+                        <p className="font-medium">₹{project.budget.toLocaleString()}</p>
                       </div>
                     )}
                     {project.deadline && (
@@ -916,7 +1334,7 @@ export default function ProjectsPage() {
                     </DialogDescription>
                   </div>
                   <div className="flex gap-2">
-                    <Badge className={getServiceBadgeClass(selectedProject.service_type)}>
+                    <Badge variant={getServiceBadgeVariant(selectedProject.service_type)}>
                       <span className="mr-1">{getServiceIcon(selectedProject.service_type)}</span>
                       {getServiceLabel(selectedProject.service_type)}
                     </Badge>
@@ -936,7 +1354,7 @@ export default function ProjectsPage() {
                           <DollarSign className="h-3 w-3" />
                           Budget
                         </div>
-                        <p className="font-semibold">${selectedProject.budget.toLocaleString()}</p>
+                        <p className="font-semibold">₹{selectedProject.budget.toLocaleString()}</p>
                       </div>
                     )}
                     {selectedProject.start_date && (
@@ -977,6 +1395,127 @@ export default function ProjectsPage() {
                     <p className="text-sm text-muted-foreground">{selectedProject.description}</p>
                   </div>
                 )}
+
+                {/* Sub-Projects (Tasks) Section */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <ListTodo className="h-4 w-4" />
+                      Sub-Projects / Tasks
+                    </h3>
+                    <Button size="sm" variant="outline" onClick={() => setIsSubProjectDialogOpen(true)}>
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Task
+                    </Button>
+                  </div>
+                  {subProjects[selectedProject.id] && subProjects[selectedProject.id].length > 0 ? (
+                    <div className="space-y-2">
+                      {subProjects[selectedProject.id].map((subProject) => (
+                        <Card key={subProject.id} className="hover:border-primary/50 transition-colors">
+                          <CardContent className="p-4">
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-medium">{subProject.name}</h4>
+                                    <StatusBadge status={subProject.status} />
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={() => {
+                                        setSelectedSubProject(subProject)
+                                        setEditSubProjectFormData({
+                                          name: subProject.name,
+                                          description: subProject.description || "",
+                                          assigned_to: subProject.assigned_to || "unassigned",
+                                          due_date: subProject.due_date || "",
+                                          status: subProject.status,
+                                          video_url: subProject.video_url || "",
+                                        })
+                                        setIsEditSubProjectDialogOpen(true)
+                                      }}
+                                    >
+                                      <Edit className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                  {subProject.description && (
+                                    <p className="text-sm text-muted-foreground mb-2">{subProject.description}</p>
+                                  )}
+                                  {subProject.video_url && (
+                                    <div className="mb-2">
+                                      <a
+                                        href={subProject.video_url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                      >
+                                        <Video className="h-3 w-3" />
+                                        View Video
+                                      </a>
+                                    </div>
+                                  )}
+                                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                                    {subProject.assigned_user && (
+                                      <div className="flex items-center gap-1">
+                                        <UserCheck className="h-3 w-3" />
+                                        {subProject.assigned_user.full_name || subProject.assigned_user.email}
+                                      </div>
+                                    )}
+                                    {subProject.due_date && (
+                                      <div className="flex items-center gap-1">
+                                        <Calendar className="h-3 w-3" />
+                                        {new Date(subProject.due_date).toLocaleDateString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <Select
+                                  value={subProject.status}
+                                  onValueChange={(value: ProjectStatus) => handleUpdateSubProjectStatus(subProject.id, value)}
+                                >
+                                  <SelectTrigger className="w-[130px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="planning">Planning</SelectItem>
+                                    <SelectItem value="in_progress">In Progress</SelectItem>
+                                    <SelectItem value="in_review">In Review</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                    <SelectItem value="stuck">Stuck</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <Progress value={subProject.progress_percentage} className="h-2 flex-1" />
+                                  <span className="text-xs font-medium w-10 text-right">{subProject.progress_percentage}%</span>
+                                </div>
+                                <Input
+                                  type="range"
+                                  min="0"
+                                  max="100"
+                                  value={subProject.progress_percentage}
+                                  onChange={(e) => handleUpdateSubProjectProgress(subProject.id, parseInt(e.target.value))}
+                                  className="h-2"
+                                />
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="pt-6">
+                        <div className="text-center py-8 text-muted-foreground text-sm">
+                          <ListTodo className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                          No tasks yet. Break down this project into smaller tasks.
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
 
                 {/* Milestones Section */}
                 <div>
@@ -1086,7 +1625,14 @@ export default function ProjectsPage() {
                     driveFolderUrl={selectedProject.drive_folder_url}
                     onDriveFolderUpdate={(url) => {
                       setSelectedProject({ ...selectedProject, drive_folder_url: url })
-                      fetchData()
+                      // Update in the projects list
+                      setProjects(prevProjects => 
+                        prevProjects.map(p => 
+                          p.id === selectedProject.id 
+                            ? { ...p, drive_folder_url: url } 
+                            : p
+                        )
+                      )
                     }}
                   />
                 </div>
@@ -1167,68 +1713,545 @@ export default function ProjectsPage() {
       {/* Assign Team Member Dialog */}
       {user?.role === 'admin' && (
         <Dialog open={isTeamDialogOpen} onOpenChange={setIsTeamDialogOpen}>
-          <DialogContent>
-            <form onSubmit={handleAssignTeamMember}>
-              <DialogHeader>
-                <DialogTitle>Assign Team Member</DialogTitle>
-                <DialogDescription>
-                  Add a team member to {selectedProject?.name}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <DialogTitle>Team Members</DialogTitle>
+                  <DialogDescription>
+                    Manage team members for {selectedProject?.name}
+                  </DialogDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => selectedProject && fetchProjectTeamMembers(selectedProject.id)}
+                  className="gap-2"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path>
+                    <path d="M21 3v5h-5"></path>
+                  </svg>
+                  Refresh
+                </Button>
+              </div>
+            </DialogHeader>
+
+            {/* Current Team Members */}
+            <div className="space-y-4 py-4">
+              {/* Debug Info */}
+              {process.env.NODE_ENV === 'development' && (
+                <div className="text-xs text-muted-foreground p-3 bg-yellow-50 dark:bg-yellow-900/10 rounded border border-yellow-200 dark:border-yellow-800 space-y-1">
+                  <div><strong>Debug Info:</strong></div>
+                  <div>Project ID: <code>{selectedProject?.id}</code></div>
+                  <div>Team Count: <code>{projectTeam[selectedProject?.id || '']?.length || 0}</code></div>
+                  <div>Has Team Data: <code>{projectTeam[selectedProject?.id || ''] ? 'Yes' : 'No'}</code></div>
+                  <div>All Projects with Teams: <code>{Object.keys(projectTeam).length}</code></div>
+                  {projectTeam[selectedProject?.id || ''] && (
+                    <div>Members: <code>{projectTeam[selectedProject?.id || ''].map(m => m.email).join(', ')}</code></div>
+                  )}
+                </div>
+              )}
+
+              {/* Team Stats */}
+              {projectTeam[selectedProject?.id || ''] && projectTeam[selectedProject?.id || ''].length > 0 && (
+                <div className="grid grid-cols-3 gap-3 p-4 bg-muted/50 rounded-lg">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{projectTeam[selectedProject?.id || ''].length}</p>
+                    <p className="text-xs text-muted-foreground">Team Members</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">
+                      {projectTeam[selectedProject?.id || ''].filter(m => m.role === 'admin').length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Admins</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">
+                      {projectTeam[selectedProject?.id || ''].filter(m => m.role === 'project_manager').length}
+                    </p>
+                    <p className="text-xs text-muted-foreground">PMs</p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h3 className="font-semibold mb-3">Current Team Members ({projectTeam[selectedProject?.id || '']?.length || 0})</h3>
+                {projectTeam[selectedProject?.id || ''] && projectTeam[selectedProject?.id || ''].length > 0 ? (
+                  <div className="space-y-2">
+                    {projectTeam[selectedProject?.id || ''].map((member) => (
+                      <div key={member.id} className="flex items-center justify-between p-3 rounded-lg border hover:border-primary/50 transition-colors">
+                        <div className="flex items-center gap-3 flex-1">
+                          <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                            <span className="text-sm font-semibold text-primary">
+                              {member.full_name?.charAt(0) || member.email.charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium truncate">{member.full_name || member.email}</p>
+                              <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                                {member.role === 'admin' ? 'Admin' : 'PM'}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveTeamMember(member.id)}
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground text-sm border rounded-lg">
+                    <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    No team members assigned yet
+                  </div>
+                )}
+              </div>
+
+              {/* Add Team Member Form */}
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-3">Add Team Member</h3>
+                <form onSubmit={handleAssignTeamMember}>
+                  <div className="grid gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="team-member">Team Member *</Label>
+                      <Select
+                        value={selectedUserId}
+                        onValueChange={setSelectedUserId}
+                        required
+                      >
+                        <SelectTrigger id="team-member">
+                          <SelectValue placeholder="Select a team member" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableUsers.length === 0 ? (
+                            <SelectItem value="none" disabled>No users available</SelectItem>
+                          ) : (
+                            availableUsers
+                              .filter(u => !projectTeam[selectedProject?.id || '']?.find(m => m.id === u.id))
+                              .map((availableUser) => (
+                                <SelectItem key={availableUser.id} value={availableUser.id}>
+                                  {availableUser.full_name} ({availableUser.email})
+                                </SelectItem>
+                              ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="team-role">Role (Optional)</Label>
+                      <Input
+                        id="team-role"
+                        placeholder="e.g., Lead Editor, Designer"
+                        value={teamRole}
+                        onChange={(e) => setTeamRole(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 mt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsTeamDialogOpen(false)}
+                      disabled={submitting}
+                    >
+                      Close
+                    </Button>
+                    <Button type="submit" disabled={submitting || !selectedUserId}>
+                      {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                      Assign Member
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Edit Project Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent className="max-w-md md:max-w-2xl max-h-[90vh] overflow-y-auto">
+          <form onSubmit={handleEditProject}>
+            <DialogHeader>
+              <DialogTitle>Edit Project</DialogTitle>
+              <DialogDescription>
+                Update project details
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-name">Project Name *</Label>
+                <Input
+                  id="edit-name"
+                  required
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-client">Client *</Label>
+                <Select
+                  value={editFormData.client_id}
+                  onValueChange={(value) => setEditFormData({ ...editFormData, client_id: value })}
+                  required
+                >
+                  <SelectTrigger id="edit-client">
+                    <SelectValue placeholder="Select a client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.company_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-description">Description</Label>
+                <Textarea
+                  id="edit-description"
+                  placeholder="Project description"
+                  value={editFormData.description}
+                  onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="team-member">Team Member *</Label>
+                  <Label htmlFor="edit-service">Service Type *</Label>
                   <Select
-                    value={selectedUserId}
-                    onValueChange={setSelectedUserId}
+                    value={editFormData.service_type}
+                    onValueChange={(value: ServiceType) => setEditFormData({ ...editFormData, service_type: value })}
                     required
                   >
-                    <SelectTrigger id="team-member">
-                      <SelectValue placeholder="Select a team member" />
+                    <SelectTrigger id="edit-service">
+                      <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {availableUsers.length === 0 ? (
-                        <SelectItem value="none" disabled>No users available</SelectItem>
-                      ) : (
-                        availableUsers
-                          .filter(u => !projectTeam[selectedProject?.id || '']?.find(m => m.id === u.id))
-                          .map((availableUser) => (
-                            <SelectItem key={availableUser.id} value={availableUser.id}>
-                              {availableUser.full_name} ({availableUser.email})
-                            </SelectItem>
-                          ))
-                      )}
+                      {SERVICE_TYPE_OPTIONS.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          <span className="mr-2">{type.icon}</span>
+                          {type.label}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="team-role">Role (Optional)</Label>
+                  <Label htmlFor="edit-status">Status *</Label>
+                  <Select
+                    value={editFormData.status}
+                    onValueChange={(value: ProjectStatus) => setEditFormData({ ...editFormData, status: value })}
+                    required
+                  >
+                    <SelectTrigger id="edit-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="planning">Planning</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="in_review">In Review</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="stuck">Stuck</SelectItem>
+                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-budget">Budget (₹)</Label>
                   <Input
-                    id="team-role"
-                    placeholder="e.g., Lead Editor, Designer"
-                    value={teamRole}
-                    onChange={(e) => setTeamRole(e.target.value)}
+                    id="edit-budget"
+                    type="number"
+                    placeholder="100000"
+                    value={editFormData.budget}
+                    onChange={(e) => setEditFormData({ ...editFormData, budget: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-progress">Progress (%)</Label>
+                  <Input
+                    id="edit-progress"
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={editFormData.progress_percentage}
+                    onChange={(e) => setEditFormData({ ...editFormData, progress_percentage: parseInt(e.target.value) || 0 })}
                   />
                 </div>
               </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsTeamDialogOpen(false)}
-                  disabled={submitting}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={submitting || !selectedUserId}>
-                  {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Assign Member
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-start">Start Date</Label>
+                  <Input
+                    id="edit-start"
+                    type="date"
+                    value={editFormData.start_date}
+                    onChange={(e) => setEditFormData({ ...editFormData, start_date: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-deadline">Deadline</Label>
+                  <Input
+                    id="edit-deadline"
+                    type="date"
+                    value={editFormData.deadline}
+                    onChange={(e) => setEditFormData({ ...editFormData, deadline: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsEditDialogOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Sub-Project Dialog */}
+      <Dialog open={isSubProjectDialogOpen} onOpenChange={setIsSubProjectDialogOpen}>
+        <DialogContent>
+          <form onSubmit={handleAddSubProject}>
+            <DialogHeader>
+              <DialogTitle>Add Sub-Project / Task</DialogTitle>
+              <DialogDescription>
+                Create a task for {selectedProject?.name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="sub-project-name">Task Name *</Label>
+                <Input
+                  id="sub-project-name"
+                  placeholder="e.g., Script Writing, Video Editing"
+                  required
+                  value={subProjectFormData.name}
+                  onChange={(e) => setSubProjectFormData({ ...subProjectFormData, name: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="sub-project-desc">Description</Label>
+                <Textarea
+                  id="sub-project-desc"
+                  placeholder="Task details..."
+                  value={subProjectFormData.description}
+                  onChange={(e) => setSubProjectFormData({ ...subProjectFormData, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="sub-project-assign">Assign To</Label>
+                  <Select
+                    value={subProjectFormData.assigned_to}
+                    onValueChange={(value) => setSubProjectFormData({ ...subProjectFormData, assigned_to: value })}
+                  >
+                    <SelectTrigger id="sub-project-assign">
+                      <SelectValue placeholder="Select team member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {availableUsers.map((availableUser) => (
+                        <SelectItem key={availableUser.id} value={availableUser.id}>
+                          {availableUser.full_name || availableUser.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="sub-project-status">Status</Label>
+                  <Select
+                    value={subProjectFormData.status}
+                    onValueChange={(value: ProjectStatus) => setSubProjectFormData({ ...subProjectFormData, status: value })}
+                  >
+                    <SelectTrigger id="sub-project-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="planning">Planning</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="in_review">In Review</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="stuck">Stuck</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="sub-project-date">Due Date</Label>
+                <Input
+                  id="sub-project-date"
+                  type="date"
+                  value={subProjectFormData.due_date}
+                  onChange={(e) => setSubProjectFormData({ ...subProjectFormData, due_date: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="sub-project-video">Video URL (Optional)</Label>
+                <Input
+                  id="sub-project-video"
+                  type="url"
+                  placeholder="https://youtube.com/watch?v=... or https://drive.google.com/..."
+                  value={subProjectFormData.video_url}
+                  onChange={(e) => setSubProjectFormData({ ...subProjectFormData, video_url: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Add a YouTube, Google Drive, or other video link
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsSubProjectDialogOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Add Task
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Sub-Project Dialog */}
+      <Dialog open={isEditSubProjectDialogOpen} onOpenChange={setIsEditSubProjectDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <form onSubmit={handleEditSubProject}>
+            <DialogHeader>
+              <DialogTitle>Edit Task</DialogTitle>
+              <DialogDescription>
+                Update task details for this project
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="edit-sub-project-name">Task Name *</Label>
+                <Input
+                  id="edit-sub-project-name"
+                  value={editSubProjectFormData.name}
+                  onChange={(e) => setEditSubProjectFormData({ ...editSubProjectFormData, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-sub-project-description">Description</Label>
+                <Textarea
+                  id="edit-sub-project-description"
+                  value={editSubProjectFormData.description}
+                  onChange={(e) => setEditSubProjectFormData({ ...editSubProjectFormData, description: e.target.value })}
+                  rows={3}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-sub-project-assigned">Assigned To</Label>
+                  <Select
+                    value={editSubProjectFormData.assigned_to}
+                    onValueChange={(value) => setEditSubProjectFormData({ ...editSubProjectFormData, assigned_to: value })}
+                  >
+                    <SelectTrigger id="edit-sub-project-assigned">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {availableUsers.map((availableUser) => (
+                        <SelectItem key={availableUser.id} value={availableUser.id}>
+                          {availableUser.full_name || availableUser.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-sub-project-status">Status</Label>
+                  <Select
+                    value={editSubProjectFormData.status}
+                    onValueChange={(value: ProjectStatus) => setEditSubProjectFormData({ ...editSubProjectFormData, status: value })}
+                  >
+                    <SelectTrigger id="edit-sub-project-status">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="planning">Planning</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="in_review">In Review</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="stuck">Stuck</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-sub-project-date">Due Date</Label>
+                <Input
+                  id="edit-sub-project-date"
+                  type="date"
+                  value={editSubProjectFormData.due_date}
+                  onChange={(e) => setEditSubProjectFormData({ ...editSubProjectFormData, due_date: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="edit-sub-project-video">Video URL (Optional)</Label>
+                <Input
+                  id="edit-sub-project-video"
+                  type="url"
+                  placeholder="https://youtube.com/watch?v=... or https://drive.google.com/..."
+                  value={editSubProjectFormData.video_url}
+                  onChange={(e) => setEditSubProjectFormData({ ...editSubProjectFormData, video_url: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Add a YouTube, Google Drive, or other video link
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsEditSubProjectDialogOpen(false)
+                  setSelectedSubProject(null)
+                }}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Update Task
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

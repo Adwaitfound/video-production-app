@@ -4,6 +4,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
+import { debug } from "@/lib/debug"
 
 type UserRole = "admin" | "employee" | "client" | "project_manager"
 
@@ -14,6 +15,13 @@ interface User {
     role: UserRole
     avatar_url?: string
     company_name?: string
+    phone?: string
+    bio?: string
+    website?: string
+    industry?: string
+    address?: string
+    tax_id?: string
+    company_size?: string
 }
 
 interface AuthContextType {
@@ -37,12 +45,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Check active sessions and sets the user
         const initAuth = async () => {
             try {
+                debug.log('AUTH', 'Initializing auth context...')
                 const { data: { session } } = await supabase.auth.getSession()
                 console.log('Auth context init: session user:', session?.user?.email)
+                debug.log('AUTH', 'Session fetched', { email: session?.user?.email, userId: session?.user?.id })
 
                 if (session?.user) {
                     setSupabaseUser(session.user)
                     // Fetch user data from users table
+                    debug.log('AUTH', 'Fetching user profile from users table...', { userId: session.user.id })
                     const { data: usersData, error } = await supabase
                         .from('users')
                         .select('*')
@@ -56,12 +67,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                     if (usersData && usersData.length > 0) {
                         setUser(usersData[0])
+                        debug.success('AUTH', 'User profile loaded', { email: usersData[0].email, role: usersData[0].role })
+                    } else {
+                        debug.warn('AUTH', 'No user profile found in users table', { userId: session.user.id })
                     }
+                } else {
+                    debug.log('AUTH', 'No active session found')
                 }
             } catch (err: any) {
                 console.error('Auth context init error:', err.message)
+                debug.error('AUTH', 'Init error', { message: err.message })
             } finally {
                 setLoading(false)
+                debug.log('AUTH', 'Auth init complete')
             }
         }
 
@@ -70,10 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Listen for changes on auth state
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             console.log('Auth state change event:', event, 'user:', session?.user?.email)
+            debug.log('AUTH', 'Auth state changed', { event, email: session?.user?.email, userId: session?.user?.id })
 
             if (session?.user) {
                 setSupabaseUser(session.user)
                 // Fetch user data from users table
+                debug.log('AUTH', 'State change: fetching user profile...', { userId: session.user.id })
                 const { data: usersData, error } = await supabase
                     .from('users')
                     .select('*')
@@ -87,19 +107,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
                 if (usersData && usersData.length > 0) {
                     setUser(usersData[0])
+                    debug.success('AUTH', 'Profile loaded from state change', { email: usersData[0].email, role: usersData[0].role })
                 } else {
-                    // If profile doesn't exist, create a default one
-                    console.warn('User profile not found, creating default profile')
-                    setUser({
-                        id: session.user.id,
-                        email: session.user.email || '',
-                        full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
-                        role: 'project_manager',
-                        avatar_url: session.user.user_metadata?.avatar_url,
-                        company_name: session.user.user_metadata?.company_name
+                    // No profile in users table - keep user null and require proper setup
+                    console.warn('User profile not found in users table')
+                    debug.error('AUTH', '❌ NO USER PROFILE FOUND', {
+                        reason: 'Auth user exists but no row in users table',
+                        userId: session.user.id,
+                        authEmail: session.user.email,
+                        solution: 'Run user creation SQL or signup flow to create user profile'
                     })
+                    setUser(null)
+                    // Sign out to prevent broken state
+                    await supabase.auth.signOut()
+                    router.push('/login')
                 }
             } else {
+                debug.log('AUTH', 'Session cleared, setting user to null')
                 setSupabaseUser(null)
                 setUser(null)
             }
@@ -112,11 +136,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [supabase])
 
     const logout = async () => {
+        debug.log('AUTH', 'Logout initiated', { currentUser: user?.email })
         setUser(null)
         setSupabaseUser(null)
+        debug.log('AUTH', 'User state cleared')
         await supabase.auth.signOut()
+        debug.success('AUTH', 'Supabase signOut complete')
         router.push("/")
+        debug.log('AUTH', 'Redirecting to login...')
         router.refresh()
+        debug.log('AUTH', 'Logout complete')
     }
 
     return (

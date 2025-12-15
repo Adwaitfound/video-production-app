@@ -115,7 +115,7 @@ export default function ClientDashboard() {
         },
         {
             title: "Total Spent",
-            value: `$${stats.totalSpent.toLocaleString()}`,
+            value: `₹${stats.totalSpent.toLocaleString()}`,
             change: "Paid invoices",
             trend: "neutral" as const,
             icon: FileText,
@@ -165,9 +165,11 @@ export default function ClientDashboard() {
             <div className="grid gap-4 lg:grid-cols-2">
                 {/* Active Projects */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Your Projects</CardTitle>
-                        <CardDescription>Track progress and view updates</CardDescription>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <CardTitle className="text-lg md:text-xl">Your Projects</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Track progress and view updates</CardDescription>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {projects.length === 0 ? (
@@ -220,9 +222,11 @@ export default function ClientDashboard() {
 
                 {/* Latest Files */}
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Latest Deliverables</CardTitle>
-                        <CardDescription>Recent files from your projects</CardDescription>
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div>
+                            <CardTitle className="text-lg md:text-xl">Latest Deliverables</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Recent files from your projects</CardDescription>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {files.length === 0 ? (
@@ -255,10 +259,10 @@ export default function ClientDashboard() {
 
             {/* Invoices */}
             <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
+                <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                     <div>
-                        <CardTitle>Invoices</CardTitle>
-                        <CardDescription>View and pay your invoices</CardDescription>
+                        <CardTitle className="text-lg md:text-xl">Invoices</CardTitle>
+                        <CardDescription className="text-xs md:text-sm">View and pay your invoices</CardDescription>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/client/invoices')}>
                         View All
@@ -280,7 +284,7 @@ export default function ClientDashboard() {
                                             </p>
                                         </div>
                                         <div className="text-right">
-                                            <p className="font-medium">${invoice.total?.toLocaleString()}</p>
+                                            <p className="font-medium">₹{invoice.total?.toLocaleString()}</p>
                                             <StatusBadge status={invoice.status} />
                                         </div>
                                     </div>

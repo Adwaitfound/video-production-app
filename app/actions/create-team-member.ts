@@ -2,9 +2,6 @@
 
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
 export async function createTeamMember(formData: {
     email: string
     full_name: string
@@ -12,6 +9,17 @@ export async function createTeamMember(formData: {
     password: string
 }) {
     try {
+        // Validate environment variables
+        if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+            throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured')
+        }
+        if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+            throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured. Please add it to your .env.local file.')
+        }
+
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+        const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
         // Create admin client with service role key (bypasses RLS and email confirmation)
         const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
             auth: {
@@ -66,6 +74,6 @@ export async function createTeamMember(formData: {
         }
     } catch (error: any) {
         console.error('Error creating team member:', error)
-        return { error: error?.message || 'Failed to create team member' }
+        return { error: error?.message || String(error) || 'Failed to create team member' }
     }
 }

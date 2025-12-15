@@ -152,21 +152,21 @@ export default function AdminDashboard() {
             {/* Header */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-                    <p className="text-muted-foreground">
+                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
+                    <p className="text-sm md:text-base text-muted-foreground mt-1">
                         Welcome back! Here&apos;s an overview of your business.
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <Button onClick={() => router.push('/dashboard/projects')}>
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <Button onClick={() => router.push('/dashboard/projects')} className="w-full sm:w-auto">
                         <Plus className="h-4 w-4 mr-2" />
                         New Project
                     </Button>
-                    <Button variant="outline" onClick={() => router.push('/dashboard/clients')}>
+                    <Button variant="outline" onClick={() => router.push('/dashboard/clients')} className="w-full sm:w-auto">
                         <Users className="h-4 w-4 mr-2" />
                         Add Client
                     </Button>
-                    <Button variant="outline" onClick={() => router.push('/dashboard/invoices')}>
+                    <Button variant="outline" onClick={() => router.push('/dashboard/invoices')} className="w-full sm:w-auto">
                         <FileText className="h-4 w-4 mr-2" />
                         Create Invoice
                     </Button>
@@ -174,10 +174,10 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
                 <StatCard
                     title="Total Revenue"
-                    value={`$${stats.totalRevenue.toLocaleString()}`}
+                    value={`₹${stats.totalRevenue.toLocaleString()}`}
                     change="From paid invoices"
                     trend="up"
                     icon={DollarSign}
@@ -198,14 +198,14 @@ export default function AdminDashboard() {
                 />
                 <StatCard
                     title="Pending Invoices"
-                    value={`$${stats.pendingInvoices.toLocaleString()}`}
+                    value={`₹${stats.pendingInvoices.toLocaleString()}`}
                     change={`${stats.overdueInvoices} overdue`}
                     trend={stats.overdueInvoices > 0 ? "down" : "neutral"}
                     icon={Receipt}
                 />
                 <StatCard
                     title="Avg Project Value"
-                    value={`$${Math.round(stats.avgProjectValue).toLocaleString()}`}
+                    value={`₹${Math.round(stats.avgProjectValue).toLocaleString()}`}
                     change="Per project"
                     trend="up"
                     icon={TrendingUp}
@@ -222,17 +222,17 @@ export default function AdminDashboard() {
             {/* Service Breakdown */}
             {projects.length > 0 && (
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
-                            <CardTitle>Service Breakdown</CardTitle>
-                            <CardDescription>Projects by service vertical</CardDescription>
+                            <CardTitle className="text-lg md:text-xl">Service Breakdown</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Projects by service vertical</CardDescription>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/analytics')}>
+                        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/analytics')} className="w-full sm:w-auto">
                             View Analytics
                         </Button>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid gap-4 md:grid-cols-3">
+                        <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
                             {(['video_production', 'social_media', 'design_branding'] as ServiceType[]).map((service) => {
                                 const serviceData = serviceBreakdown.find(s => s.service_type === service) || { count: 0, percentage: 0 }
                                 const config = SERVICE_TYPES[service]
@@ -240,20 +240,20 @@ export default function AdminDashboard() {
                                 return (
                                     <div
                                         key={service}
-                                        className={`p-4 rounded-lg border-2 ${config.borderColor} ${config.bgColor} cursor-pointer hover:shadow-md transition-all`}
-                                        onClick={() => router.push('/dashboard/projects')}
+                                        className="p-4 rounded-lg border hover:border-primary cursor-pointer hover:shadow-md transition-all bg-card"
+                                        onClick={() => router.push(`/dashboard/projects?service=${service}`)}
                                     >
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="text-2xl">{config.icon}</span>
-                                            <Badge className={config.bgColor + ' ' + config.textColor}>
+                                            <Badge variant="secondary">
                                                 {serviceData.count} {serviceData.count === 1 ? 'project' : 'projects'}
                                             </Badge>
                                         </div>
-                                        <h3 className={`font-semibold mb-1 ${config.textColor}`}>{config.label}</h3>
+                                        <h3 className="font-semibold mb-1">{config.label}</h3>
                                         <p className="text-xs text-muted-foreground mb-3">{config.description}</p>
                                         <div className="flex items-center justify-between">
                                             <span className="text-xs text-muted-foreground">Share</span>
-                                            <span className={`text-sm font-bold ${config.textColor}`}>
+                                            <span className="text-sm font-bold">
                                                 {serviceData.percentage.toFixed(0)}%
                                             </span>
                                         </div>
@@ -265,15 +265,15 @@ export default function AdminDashboard() {
                 </Card>
             )}
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
                 {/* Recent Projects */}
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
-                            <CardTitle>Recent Projects</CardTitle>
-                            <CardDescription>Latest projects and their status</CardDescription>
+                            <CardTitle className="text-lg md:text-xl">Recent Projects</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Latest projects and their status</CardDescription>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/projects')}>
+                        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/projects')} className="w-full sm:w-auto">
                             View All
                         </Button>
                     </CardHeader>
@@ -303,7 +303,7 @@ export default function AdminDashboard() {
                                         </div>
                                         <div className="flex items-center gap-3">
                                             {project.budget && (
-                                                <span className="text-sm font-medium">${project.budget.toLocaleString()}</span>
+                                                <span className="text-sm font-medium">₹{project.budget.toLocaleString()}</span>
                                             )}
                                             <StatusBadge status={project.status} />
                                         </div>
@@ -316,10 +316,10 @@ export default function AdminDashboard() {
 
                 {/* Recent Clients */}
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
-                            <CardTitle>Recent Clients</CardTitle>
-                            <CardDescription>Latest client additions</CardDescription>
+                            <CardTitle className="text-lg md:text-xl">Recent Clients</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Latest client additions</CardDescription>
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -370,12 +370,12 @@ export default function AdminDashboard() {
 
                 {/* Recent Invoices */}
                 <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
+                    <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
-                            <CardTitle>Recent Invoices</CardTitle>
-                            <CardDescription>Latest billing activity</CardDescription>
+                            <CardTitle className="text-lg md:text-xl">Recent Invoices</CardTitle>
+                            <CardDescription className="text-xs md:text-sm">Latest billing activity</CardDescription>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/invoices')}>
+                        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/invoices')} className="w-full sm:w-auto">
                             View All
                         </Button>
                     </CardHeader>
@@ -404,7 +404,7 @@ export default function AdminDashboard() {
                                             </p>
                                         </div>
                                         <div className="flex flex-col items-end gap-1">
-                                            <span className="text-sm font-medium">${invoice.total?.toLocaleString()}</span>
+                                            <span className="text-sm font-medium">₹{invoice.total?.toLocaleString()}</span>
                                             <StatusBadge status={invoice.status} />
                                         </div>
                                     </div>
@@ -446,7 +446,7 @@ export default function AdminDashboard() {
                                                 </p>
                                             </div>
                                             <div className="flex flex-col items-end gap-1">
-                                                <span className="text-sm font-medium">${invoice.total?.toLocaleString()}</span>
+                                                <span className="text-sm font-medium">₹{invoice.total?.toLocaleString()}</span>
                                                 <Badge variant="destructive" className="text-xs">
                                                     {daysOverdue} day{daysOverdue !== 1 ? 's' : ''} overdue
                                                 </Badge>

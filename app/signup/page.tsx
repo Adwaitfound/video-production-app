@@ -139,15 +139,17 @@ function SignupForm() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleSignup} className="space-y-4">
+                    <form onSubmit={handleSignup} className="space-y-4" autoComplete="off">
                         <div className="space-y-2">
                             <Label htmlFor="fullName">Full Name *</Label>
                             <Input
                                 id="fullName"
+                                name="user-fullname-signup"
                                 type="text"
                                 placeholder="John Doe"
                                 value={fullName}
                                 onChange={(e) => setFullName(e.target.value)}
+                                autoComplete="off"
                                 required
                             />
                         </div>
@@ -156,10 +158,12 @@ function SignupForm() {
                             <Label htmlFor="email">Email *</Label>
                             <Input
                                 id="email"
+                                name="user-email-signup"
                                 type="email"
                                 placeholder="you@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="off"
                                 required
                             />
                         </div>
@@ -168,10 +172,12 @@ function SignupForm() {
                             <Label htmlFor="password">Password *</Label>
                             <Input
                                 id="password"
+                                name="user-password-signup"
                                 type="password"
                                 placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="off"
                                 required
                                 minLength={6}
                             />
@@ -184,10 +190,12 @@ function SignupForm() {
                                     <Label htmlFor="companyName">Company Name *</Label>
                                     <Input
                                         id="companyName"
+                                        name="user-company-signup"
                                         type="text"
                                         placeholder="Your Company"
                                         value={companyName}
                                         onChange={(e) => setCompanyName(e.target.value)}
+                                        autoComplete="off"
                                         required
                                     />
                                 </div>
@@ -196,10 +204,12 @@ function SignupForm() {
                                     <Label htmlFor="phone">Phone (Optional)</Label>
                                     <Input
                                         id="phone"
+                                        name="user-phone-signup"
                                         type="tel"
                                         placeholder="+1 (555) 123-4567"
                                         value={phone}
                                         onChange={(e) => setPhone(e.target.value)}
+                                        autoComplete="off"
                                     />
                                 </div>
                             </>
@@ -210,10 +220,12 @@ function SignupForm() {
                                 <Label htmlFor="companyName">Company Name (Optional)</Label>
                                 <Input
                                     id="companyName"
+                                    name="user-company-signup"
                                     type="text"
                                     placeholder="Your Company"
                                     value={companyName}
                                     onChange={(e) => setCompanyName(e.target.value)}
+                                    autoComplete="off"
                                 />
                             </div>
                         )}

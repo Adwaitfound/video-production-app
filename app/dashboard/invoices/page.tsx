@@ -287,7 +287,7 @@ export default function InvoicesPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl md:text-2xl font-bold">${stats.total.toLocaleString()}</div>
+            <div className="text-xl md:text-2xl font-bold">₹{stats.total.toLocaleString()}</div>
           </CardContent>
         </Card>
         <Card>
@@ -296,7 +296,7 @@ export default function InvoicesPage() {
             <CheckCircle2 className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl md:text-2xl font-bold">${stats.paid.toLocaleString()}</div>
+            <div className="text-xl md:text-2xl font-bold">₹{stats.paid.toLocaleString()}</div>
           </CardContent>
         </Card>
         <Card>
@@ -305,7 +305,7 @@ export default function InvoicesPage() {
             <Clock className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl md:text-2xl font-bold">${stats.pending.toLocaleString()}</div>
+            <div className="text-xl md:text-2xl font-bold">₹{stats.pending.toLocaleString()}</div>
           </CardContent>
         </Card>
         <Card>
@@ -314,7 +314,7 @@ export default function InvoicesPage() {
             <Clock className="h-4 w-4 text-red-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-xl md:text-2xl font-bold">${stats.overdue.toLocaleString()}</div>
+            <div className="text-xl md:text-2xl font-bold">₹{stats.overdue.toLocaleString()}</div>
           </CardContent>
         </Card>
       </div>
@@ -381,7 +381,7 @@ export default function InvoicesPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="text-2xl font-bold">${invoice.total?.toLocaleString()}</div>
+                <div className="text-2xl font-bold">₹{invoice.total?.toLocaleString()}</div>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-muted-foreground text-xs">Issue Date</p>
@@ -443,7 +443,7 @@ export default function InvoicesPage() {
                     <TableCell>
                       {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : 'N/A'}
                     </TableCell>
-                    <TableCell className="font-medium">${invoice.total?.toLocaleString()}</TableCell>
+                    <TableCell className="font-medium">₹{invoice.total?.toLocaleString()}</TableCell>
                     <TableCell>
                       <Badge variant={statusConfig[invoice.status]?.variant || "secondary"}>
                         {statusConfig[invoice.status]?.label || invoice.status}

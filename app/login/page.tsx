@@ -27,6 +27,23 @@ export default function LoginPage() {
             }
         }
         resetSession()
+        
+        // Aggressively clear form fields to prevent browser autofill
+        setTimeout(() => {
+            setEmail("")
+            setPassword("")
+            // Also clear any browser-filled values in the DOM
+            const emailInput = document.getElementById('email') as HTMLInputElement
+            const passwordInput = document.getElementById('password') as HTMLInputElement
+            if (emailInput) emailInput.value = ""
+            if (passwordInput) passwordInput.value = ""
+        }, 100)
+        
+        // Cleanup on unmount
+        return () => {
+            setEmail("")
+            setPassword("")
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
@@ -155,7 +172,11 @@ export default function LoginPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <form onSubmit={handleLogin} className="space-y-4">
+                    <form onSubmit={handleLogin} className="space-y-4" autoComplete="off">
+                        {/* Hidden dummy fields to prevent autofill */}
+                        <input type="text" style={{ display: 'none' }} tabIndex={-1} autoComplete="off" />
+                        <input type="password" style={{ display: 'none' }} tabIndex={-1} autoComplete="off" />
+                        
                         {error && (
                             <div className="p-3 text-sm text-red-500 bg-red-50 dark:bg-red-900/20 rounded-md">
                                 {error}
@@ -166,10 +187,14 @@ export default function LoginPage() {
                             <Label htmlFor="email">Email</Label>
                             <Input
                                 id="email"
+                                name="user-email-login"
                                 type="email"
                                 placeholder="you@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="off"
+                                data-lpignore="true"
+                                data-form-type="other"
                                 required
                             />
                         </div>
@@ -178,10 +203,14 @@ export default function LoginPage() {
                             <Label htmlFor="password">Password</Label>
                             <Input
                                 id="password"
+                                name="user-password-login"
                                 type="password"
                                 placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="new-password"
+                                data-lpignore="true"
+                                data-form-type="other"
                                 required
                             />
                         </div>
