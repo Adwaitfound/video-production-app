@@ -9,7 +9,8 @@ import {
   Users,
   FileText,
   BarChart3,
-  Settings
+  Settings,
+  UserCheck
 } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 
@@ -23,6 +24,16 @@ const adminRoutes = [
     label: "Projects",
     icon: FolderKanban,
     href: "/dashboard/projects",
+  },
+  {
+    label: "All Clients",
+    icon: Users,
+    href: "/dashboard/clients",
+  },
+  {
+    label: "Team Members",
+    icon: UserCheck,
+    href: "/dashboard/team",
   },
   {
     label: "Invoices",

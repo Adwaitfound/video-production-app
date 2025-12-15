@@ -36,39 +36,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         // Check active sessions and sets the user
         const initAuth = async () => {
-            const { data: { session } } = await supabase.auth.getSession()
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                console.log('Auth context init: session user:', session?.user?.email)
 
-            if (session?.user) {
-                setSupabaseUser(session.user)
-                // Fetch user data from users table
-                const { data: userData } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', session.user.id)
-                    .single()
+                if (session?.user) {
+                    setSupabaseUser(session.user)
+                    // Fetch user data from users table
+                    const { data: usersData, error } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('id', session.user.id)
 
-                if (userData) {
-                    setUser(userData)
+                    console.log('Auth context: fetched user profile', {
+                        email: session.user.email,
+                        rows: usersData?.length,
+                        error: error?.message
+                    })
+
+                    if (usersData && usersData.length > 0) {
+                        setUser(usersData[0])
+                    }
                 }
+            } catch (err: any) {
+                console.error('Auth context init error:', err.message)
+            } finally {
+                setLoading(false)
             }
-            setLoading(false)
         }
 
         initAuth()
 
         // Listen for changes on auth state
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log('Auth state change event:', event, 'user:', session?.user?.email)
+
             if (session?.user) {
                 setSupabaseUser(session.user)
                 // Fetch user data from users table
-                const { data: userData } = await supabase
+                const { data: usersData, error } = await supabase
                     .from('users')
                     .select('*')
                     .eq('id', session.user.id)
-                    .single()
 
-                if (userData) {
-                    setUser(userData)
+                console.log('Auth state change: fetched user profile', {
+                    email: session.user.email,
+                    rows: usersData?.length,
+                    error: error?.message
+                })
+
+                if (usersData && usersData.length > 0) {
+                    setUser(usersData[0])
+                } else {
+                    // If profile doesn't exist, create a default one
+                    console.warn('User profile not found, creating default profile')
+                    setUser({
+                        id: session.user.id,
+                        email: session.user.email || '',
+                        full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+                        role: 'project_manager',
+                        avatar_url: session.user.user_metadata?.avatar_url,
+                        company_name: session.user.user_metadata?.company_name
+                    })
                 }
             } else {
                 setSupabaseUser(null)
@@ -83,9 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [supabase])
 
     const logout = async () => {
-        await supabase.auth.signOut()
         setUser(null)
         setSupabaseUser(null)
+        await supabase.auth.signOut()
         router.push("/")
         router.refresh()
     }

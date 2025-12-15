@@ -22,38 +22,107 @@ export default function LoginPage() {
         setLoading(true)
         setError(null)
 
+        // Set a timeout to prevent infinite loading
+        const timeout = setTimeout(() => {
+            console.error('Login timeout - taking longer than expected')
+            setLoading(false)
+            setError('Login is taking too long. Please try again.')
+        }, 10000) // 10 second timeout
+
         try {
+            console.log('Step 1: Attempting login with:', email)
             const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             })
+            console.log('Step 2: Auth response received', {
+                authError: authError?.message,
+                userId: authData?.user?.id,
+                authenticatedEmail: authData?.user?.email
+            })
 
-            if (authError) throw authError
-
-            if (authData.user) {
-                // Fetch user data from users table
-                const { data: userData, error: userError } = await supabase
-                    .from('users')
-                    .select('*')
-                    .eq('id', authData.user.id)
-                    .single()
-
-                if (userError) throw userError
-
-                // Redirect based on role
-                if (userData.role === 'admin') {
-                    router.push('/dashboard')
-                } else if (userData.role === 'client') {
-                    router.push('/dashboard/client')
-                } else {
-                    router.push('/dashboard/employee')
-                }
-                router.refresh()
+            if (authError) {
+                console.error('Auth error:', authError)
+                throw authError
             }
+
+            if (!authData.user) {
+                throw new Error('No user returned from authentication')
+            }
+
+            console.log('Step 3: User authenticated:', authData.user.id)
+
+            // Fetch user data from users table
+            console.log('Step 4: Fetching user profile...')
+            const { data: usersData, error: userError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', authData.user.id)
+
+            console.log('Step 5: User profile response', {
+                error: userError?.message,
+                rowCount: usersData?.length,
+                role: usersData?.[0]?.role
+            })
+
+            if (userError) {
+                console.error('User data error:', {
+                    message: userError.message,
+                    code: userError.code,
+                    details: userError.details
+                })
+                throw new Error('Failed to fetch user profile. Please try again or contact support.')
+            }
+
+            // Handle case where user doesn't exist in users table
+            if (!usersData || usersData.length === 0) {
+                console.error('User profile not found in database for:', authData.user.id)
+                // Create a default user profile if it doesn't exist
+                console.log('Step 6: Creating user profile...')
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert({
+                        id: authData.user.id,
+                        email: authData.user.email,
+                        full_name: authData.user.user_metadata?.full_name || email.split('@')[0],
+                        role: 'project_manager'
+                    })
+
+                if (insertError) {
+                    console.error('Failed to create user profile:', insertError)
+                    throw new Error('Failed to create user profile. Please contact support.')
+                }
+
+                console.log('Step 7: User profile created, redirecting to employee dashboard')
+                router.push('/dashboard/employee')
+                clearTimeout(timeout)
+                return
+            }
+
+            const userData = usersData[0]
+            console.log('Step 6: User data fetched, redirecting based on role:', userData.role)
+
+            // Small delay to ensure session is properly set before redirect
+            await new Promise(resolve => setTimeout(resolve, 500))
+
+            // Redirect based on role
+            if (userData.role === 'admin') {
+                console.log('Redirecting to admin dashboard')
+                router.push('/dashboard')
+            } else if (userData.role === 'client') {
+                console.log('Redirecting to client dashboard')
+                router.push('/dashboard/client')
+            } else {
+                console.log('Redirecting to employee dashboard')
+                router.push('/dashboard/employee')
+            }
+
+            clearTimeout(timeout)
         } catch (err: any) {
+            console.error('Login error:', err)
             setError(err.message || 'Failed to log in')
-        } finally {
             setLoading(false)
+            clearTimeout(timeout)
         }
     }
 

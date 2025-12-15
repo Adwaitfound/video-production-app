@@ -12,8 +12,8 @@ export default function DashboardLayout({
   const pathname = usePathname()
 
   // Check if this is a client or employee route - they have their own layouts
-  const isClientRoute = pathname.startsWith('/dashboard/client')
-  const isEmployeeRoute = pathname.startsWith('/dashboard/employee')
+  const isClientRoute = pathname.startsWith('/dashboard/client/') || pathname === '/dashboard/client'
+  const isEmployeeRoute = pathname.startsWith('/dashboard/employee/') || pathname === '/dashboard/employee'
 
   // Client and employee routes have their own layouts, so just pass through children
   if (isClientRoute || isEmployeeRoute) {
