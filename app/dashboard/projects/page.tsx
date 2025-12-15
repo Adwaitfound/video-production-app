@@ -1,7 +1,7 @@
 'use client';
 
 import React from "react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -36,7 +36,7 @@ import { Badge } from "@/components/ui/badge"
 import { FileManager } from "@/components/projects/file-manager"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-export default function ProjectsPage() {
+function ProjectsPageContent() {
   const { user } = useAuth()
   const searchParams = useSearchParams()
   const [projects, setProjects] = useState<Project[]>([])
@@ -159,7 +159,7 @@ export default function ProjectsPage() {
 
       if (clientsError) throw clientsError
       debug.success('FETCH_DATA', 'Clients fetched', { count: clientsData?.length })
-      
+
       setProjects(projectsData || [])
       setClients(clientsData || [])
 
@@ -265,7 +265,7 @@ export default function ProjectsPage() {
           console.error('Error fetching users:', usersError)
         } else {
           // Filter to only show admin and project_manager roles
-          const filteredUsers = (allUsers || []).filter(u => 
+          const filteredUsers = (allUsers || []).filter(u =>
             u.role === 'admin' || u.role === 'project_manager'
           )
           setAvailableUsers(filteredUsers)
@@ -286,7 +286,7 @@ export default function ProjectsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (submitting) return
-    
+
     setSubmitting(true)
 
     const supabase = createClient()
@@ -425,7 +425,7 @@ export default function ProjectsPage() {
       debug.success('ASSIGN_TEAM', 'Members updated', { members: updatedMembers.map(m => m.email) })
       console.log('Updated members returned:', updatedMembers)
       console.log('=== ASSIGN TEAM MEMBER END ===')
-      
+
       // Don't close dialog - let user see the updated list
       // setIsTeamDialogOpen(false)
     } catch (error: any) {
@@ -470,7 +470,7 @@ export default function ProjectsPage() {
 
   async function fetchProjectTeamMembers(projectId: string) {
     const supabase = createClient()
-    
+
     try {
       const { data, error } = await supabase
         .from('project_team')
@@ -499,7 +499,7 @@ export default function ProjectsPage() {
 
   async function fetchSubProjects(projectId: string) {
     const supabase = createClient()
-    
+
     try {
       const { data: subProjectsData, error } = await supabase
         .from('sub_projects')
@@ -544,7 +544,7 @@ export default function ProjectsPage() {
       // Reset form first
       setSubProjectFormData({ name: "", description: "", assigned_to: "unassigned", due_date: "", status: "planning", video_url: "" })
       setIsSubProjectDialogOpen(false)
-      
+
       // Then fetch updated data
       await fetchSubProjects(selectedProject.id)
     } catch (error: any) {
@@ -579,7 +579,7 @@ export default function ProjectsPage() {
 
       setIsEditSubProjectDialogOpen(false)
       setSelectedSubProject(null)
-      
+
       if (selectedProject) {
         await fetchSubProjects(selectedProject.id)
       }
@@ -593,7 +593,7 @@ export default function ProjectsPage() {
 
   async function handleUpdateSubProjectProgress(subProjectId: string, progress: number) {
     const supabase = createClient()
-    
+
     try {
       const { error } = await supabase
         .from('sub_projects')
@@ -612,11 +612,11 @@ export default function ProjectsPage() {
 
   async function handleUpdateSubProjectStatus(subProjectId: string, status: ProjectStatus) {
     const supabase = createClient()
-    
+
     try {
       const { error } = await supabase
         .from('sub_projects')
-        .update({ 
+        .update({
           status,
           completed_at: status === 'completed' ? new Date().toISOString() : null
         })
@@ -1137,7 +1137,7 @@ export default function ProjectsPage() {
                             </span>
                           </div>
                         )}
-                        
+
                         {/* Team Members */}
                         {projectTeam[project.id] && projectTeam[project.id].length > 0 && (
                           <div className="flex items-center gap-2 flex-wrap">
@@ -1626,10 +1626,10 @@ export default function ProjectsPage() {
                     onDriveFolderUpdate={(url) => {
                       setSelectedProject({ ...selectedProject, drive_folder_url: url })
                       // Update in the projects list
-                      setProjects(prevProjects => 
-                        prevProjects.map(p => 
-                          p.id === selectedProject.id 
-                            ? { ...p, drive_folder_url: url } 
+                      setProjects(prevProjects =>
+                        prevProjects.map(p =>
+                          p.id === selectedProject.id
+                            ? { ...p, drive_folder_url: url }
                             : p
                         )
                       )
@@ -2253,5 +2253,17 @@ export default function ProjectsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function ProjectsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <ProjectsPageContent />
+    </Suspense>
   )
 }

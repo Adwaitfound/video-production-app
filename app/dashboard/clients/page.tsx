@@ -32,11 +32,12 @@ import {
 } from "@/components/ui/table"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Plus, Search, Mail, Phone, MapPin, Building2, Loader2, Copy, CheckCircle2, Eye, FolderKanban, DollarSign } from "lucide-react"
+import { Plus, Search, Mail, Phone, MapPin, Building2, Loader2, Copy, CheckCircle2, Eye, FolderKanban, DollarSign, Trash2 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { Client, Project, Invoice, ServiceType } from "@/types"
 import { SERVICE_TYPES } from "@/types"
 import { createClientAccount } from "@/app/actions/create-client"
+import { deleteClient } from "@/app/actions/delete-client"
 import { Badge } from "@/components/ui/badge"
 import { debug } from "@/lib/debug"
 
@@ -59,6 +60,8 @@ export default function ClientsPage() {
   const [showCredentials, setShowCredentials] = useState(false)
   const [generatedCredentials, setGeneratedCredentials] = useState({ email: "", password: "" })
   const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState<{ clientId: string; clientName: string } | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -157,12 +160,12 @@ export default function ClientsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (submitting) return
-    
+
     setSubmitting(true)
 
     try {
       debug.log('CLIENTS', 'Adding client', formData)
-      
+
       // Call server action to create client account
       let result
       try {
@@ -171,7 +174,7 @@ export default function ClientsPage() {
         debug.error('CLIENTS', 'Server action call failed', { error: callError?.message })
         throw new Error(`Server action failed: ${callError?.message || String(callError)}`)
       }
-      
+
       debug.log('CLIENTS', 'Add client result', result)
 
       if (!result.success) {
@@ -180,7 +183,7 @@ export default function ClientsPage() {
       }
 
       debug.success('CLIENTS', 'Client created successfully', { email: result.credentials?.email })
-      
+
       // Store credentials to show to admin
       setGeneratedCredentials({
         email: result.credentials!.email,
@@ -243,6 +246,33 @@ export default function ClientsPage() {
   function openClientDetails(client: ClientWithDetails) {
     setSelectedClient(client)
     setIsDetailModalOpen(true)
+  }
+
+  async function handleDeleteClient(clientId: string) {
+    setIsDeleting(true)
+    try {
+      debug.log('CLIENTS', 'Deleting client', { clientId })
+      const result = await deleteClient(clientId)
+
+      if (!result.success) {
+        debug.error('CLIENTS', 'Failed to delete client', result.error)
+        alert(result.error || 'Failed to delete client')
+        return
+      }
+
+      debug.success('CLIENTS', 'Client deleted successfully')
+      setDeleteConfirmation(null)
+      setIsDetailModalOpen(false)
+      setSelectedClient(null)
+      await fetchClients()
+      alert('Client deleted successfully')
+    } catch (error: any) {
+      console.error('Error deleting client:', error)
+      debug.error('CLIENTS', 'Delete error', { error: error?.message })
+      alert(error?.message || 'Failed to delete client')
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return (
@@ -507,16 +537,28 @@ export default function ClientsPage() {
                         <StatusBadge status={client.status} />
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openClientDetails(client)
-                          }}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openClientDetails(client)
+                            }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDeleteConfirmation({ clientId: client.id, clientName: client.company_name })
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -533,14 +575,24 @@ export default function ClientsPage() {
           {selectedClient && (
             <>
               <DialogHeader>
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-12 w-12">
-                    <AvatarFallback>{getInitials(selectedClient.company_name)}</AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <DialogTitle className="text-2xl">{selectedClient.company_name}</DialogTitle>
-                    <DialogDescription>{selectedClient.contact_person}</DialogDescription>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-12 w-12">
+                      <AvatarFallback>{getInitials(selectedClient.company_name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <DialogTitle className="text-2xl">{selectedClient.company_name}</DialogTitle>
+                      <DialogDescription>{selectedClient.contact_person}</DialogDescription>
+                    </div>
                   </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDeleteConfirmation({ clientId: selectedClient.id, clientName: selectedClient.company_name })}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </DialogHeader>
 
@@ -731,6 +783,43 @@ export default function ClientsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteConfirmation} onOpenChange={(open) => !open && setDeleteConfirmation(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Client</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{deleteConfirmation?.clientName}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-3">
+            <p className="text-sm text-red-800 dark:text-red-200">
+              <strong>Warning:</strong> This will delete the client account, all associated projects, invoices, and files.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteConfirmation(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => deleteConfirmation && handleDeleteClient(deleteConfirmation.clientId)}
+              disabled={isDeleting}
+            >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isDeleting ? 'Deleting...' : 'Delete Client'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div >
   )
 }
+
